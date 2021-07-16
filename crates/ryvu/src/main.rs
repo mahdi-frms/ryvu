@@ -1,3 +1,5 @@
+use std::usize;
+
 struct Network {
     nodes_state:Vec<NodeState>,
     nodes_connections:Vec<NodeConnection>
@@ -12,7 +14,7 @@ struct NodeState {
     blocked:bool
 }
 
-#[derive(Clone)]
+#[derive(Clone,Default)]
 struct NodeConnection {
     charging:Vec<usize>,
     blocking:Vec<usize>
@@ -64,6 +66,22 @@ impl Network {
             nodes_connections:module.connections.clone(),
             nodes_state:states
         }
+    }
+}
+
+impl Module {
+    fn expand(&mut self,from:usize,to:usize){
+        while !(to < self.connections.len() && from < self.connections.len()) {
+            self.connections.push(NodeConnection::default());
+        }
+    }
+    fn charge(&mut self,from:usize,to:usize) {
+        self.expand(from, to);
+        self.connections[from].charging.push(to);
+    }
+    fn block(&mut self,from:usize,to:usize) {
+        self.expand(from, to);
+        self.connections[from].blocking.push(to);
     }
 }
 
