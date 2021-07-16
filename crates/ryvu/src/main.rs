@@ -1,8 +1,8 @@
-use std::usize;
+use std::{rc::Rc, usize};
 
 struct Network {
     nodes_state:Vec<NodeState>,
-    nodes_connections:Vec<NodeConnection>
+    module:Rc<Module>
 }
 
 
@@ -20,7 +20,9 @@ struct NodeConnection {
     blocking:Vec<usize>
 }
 struct Module{
-    connections:Vec<NodeConnection>
+    connections:Vec<NodeConnection>,
+    inputs:Vec<usize>,
+    outputs:Vec<usize>
 }
 
 impl Default for NodeState {
@@ -38,10 +40,10 @@ impl Network {
     fn next(&mut self){
         for index in 0..self.nodes_state.len() {
             if self.nodes_state[index].charged && !self.nodes_state[index].blocked {
-                for other_index in self.nodes_connections[index].charging.iter() {
+                for other_index in self.module.connections[index].charging.iter() {
                     self.nodes_state[*other_index].is_being_charged = true;
                 }
-                for other_index in self.nodes_connections[index].blocking.iter() {
+                for other_index in self.module.connections[index].blocking.iter() {
                     self.nodes_state[*other_index].is_being_blocked = true;
                 }
             }
@@ -57,13 +59,13 @@ impl Network {
         }
     }
 
-    fn from_module(module:&Module)->Network{
+    fn from_module(module:Rc<Module>)->Network{
         let mut states = Vec::with_capacity(module.connections.len());
         for _ in 0..module.connections.len() {
             states.push(NodeState::default());
         }
         Network{
-            nodes_connections:module.connections.clone(),
+            module,
             nodes_state:states
         }
     }
@@ -82,6 +84,12 @@ impl Module {
     fn block(&mut self,from:usize,to:usize) {
         self.expand(from, to);
         self.connections[from].blocking.push(to);
+    }
+    fn input(&mut self,input:usize){
+        self.inputs.push(input);
+    }
+    fn output(&mut self,output:usize){
+        self.outputs.push(output);
     }
 }
 
