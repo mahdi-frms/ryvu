@@ -57,8 +57,17 @@ struct Lexer {
 }
 
 impl Lexer {
+    fn is_alphabetic(ch:char)->bool {
+        (ch >= 'a' && ch <= 'z') || ch == '_'
+    }
+    fn is_numeric(ch:char)->bool {
+        ch >= '0' && ch <= '9'
+    }
+    fn is_alphanumeric(ch:char)->bool {
+        Self::is_alphabetic(ch) || Self::is_numeric(ch)
+    }
     fn push_space(&mut self){
-        if !self.buffer.is_empty() {
+        if !self.buffer.is_empty() && self.buffer.chars().peekable().peek().unwrap() == &' ' {
             self.tokens.push(
                 token!(Space,self.buffer.clone(),self.line,self.char_index)
             );
@@ -66,8 +75,18 @@ impl Lexer {
             self.buffer.clear();
         }
     }
+    fn push_ident(&mut self){
+        if !self.buffer.is_empty() && self.buffer.chars().peekable().peek().unwrap() != &' ' {
+            self.tokens.push(
+                token!(Identifier,self.buffer.clone(),self.line,self.char_index)
+            );
+            self.char_index += self.buffer.len();
+            self.buffer.clear();
+        }
+    }
     fn push_signes(&mut self,ch:char){
         self.push_space();
+        self.push_ident();
         let kind = match ch {
             ';' => TokenKind::Semicolon,
             '$' => TokenKind::Port,
@@ -80,19 +99,26 @@ impl Lexer {
     fn lex(&mut self,source:&str)->Vec<Token> {
         for ch in source.chars() {
             if ch == ' ' {
+                self.push_ident();
                 self.buffer.push(ch);
             }
             else if [';','.','>','$'].contains(&ch) {
                 self.push_signes(ch);
             }
+            else if Self::is_alphanumeric(ch) {
+                self.push_space();
+                self.buffer.push(ch);
+            }
             else{
                 self.push_space();
+                self.push_ident();
                 self.tokens.push(token!(EndLine,"\n",self.line,self.char_index));
                 self.line += 1;
                 self.char_index = 0;
             }
         }
         self.push_space();
+        self.push_ident();
         std::mem::replace(&mut self.tokens, vec![])
     }
 }
@@ -178,6 +204,24 @@ mod test {
             token!(Space,"   ",1,0),
             token!(EndLine,"\n",1,3),
             token!(Port,"$",2,0)
+        ]);
+    }
+
+    #[test]
+    fn supports_identifier(){
+        let source = "$input > $output;\nmid";
+        let tokens = lex(source);
+        assert_eq!(tokens,vec![
+            token!(Port,"$",0,0),
+            token!(Identifier,"input",0,1),
+            token!(Space," ",0,6),
+            token!(Charge,">",0,7),
+            token!(Space," ",0,8),
+            token!(Port,"$",0,9),
+            token!(Identifier,"output",0,10),
+            token!(Semicolon,";",0,16),
+            token!(EndLine,"\n",0,17),
+            token!(Identifier,"mid",1,0),
         ]);
     }
 }
