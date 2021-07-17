@@ -37,12 +37,6 @@ impl TokenPosition {
     }
 }
 
-
-macro_rules! pos {
-    ($l:expr,$c:expr) => {
-        TokenPosition::new($l,$c)
-    };
-}
 macro_rules! token {
     ($k:ident,$t:expr,$l:expr,$c:expr) => {
         Token::new(
@@ -52,48 +46,50 @@ macro_rules! token {
     };
 }
 
-pub fn lex(source:&str)->Vec<Token> {
-    let mut tokens = vec![];
-    let mut buffer = String::default();
-    let mut line = 0usize;
-    let mut char_index = 0;
-    for ch in source.chars() {
-        if ch == ' ' {
-            buffer.push(ch);
-        }
-        else if ch == ';' {
-            if !buffer.is_empty() {
-                tokens.push(
-                    Token::new(TokenKind::Space,buffer.clone(),pos!(line,char_index))
-                );
-                char_index += buffer.len();
-                buffer.clear();
-            }
-            tokens.push(Token::new(TokenKind::Semicolon, ";".to_string(), pos!(line,char_index)));
-            char_index += 1;
-        }
-        else{
-            if !buffer.is_empty() {
-                tokens.push(
-                    Token::new(TokenKind::Space,buffer.clone(),pos!(line,char_index))
-                );
-                char_index += buffer.len();
-                buffer.clear();
-            }
-            tokens.push(Token::new(TokenKind::EndLine, "\n".to_string(), pos!(line,char_index)));
-            line += 1;
-            char_index = 0;
-        }
-    }
 
-    if !buffer.is_empty() {
-        tokens.push(
-            Token::new(TokenKind::Space,buffer.clone(),pos!(line,char_index))
-        );
-        char_index += buffer.len();
-        buffer.clear();
+#[derive(Default)]
+struct Lexer {
+    tokens:Vec<Token>,
+    buffer:String,
+    line:usize,
+    char_index:usize   
+}
+
+impl Lexer {
+    fn push_space(&mut self){
+        if !self.buffer.is_empty() {
+            self.tokens.push(
+                token!(Space,self.buffer.clone(),self.line,self.char_index)
+            );
+            self.char_index += self.buffer.len();
+            self.buffer.clear();
+        }
     }
-    tokens
+    fn lex(&mut self,source:&str)->Vec<Token> {
+        for ch in source.chars() {
+            if ch == ' ' {
+                self.buffer.push(ch);
+            }
+            else if ch == ';' {
+                self.push_space();
+                self.tokens.push(token!(Semicolon,";",self.line,self.char_index));
+                self.char_index += 1;
+            }
+            else{
+                self.push_space();
+                self.tokens.push(token!(EndLine,"\n",self.line,self.char_index));
+                self.line += 1;
+                self.char_index = 0;
+            }
+        }
+        self.push_space();
+        std::mem::replace(&mut self.tokens, vec![])
+    }
+}
+
+pub fn lex(source:&str)->Vec<Token> {
+    let mut lexer = Lexer::default();
+    lexer.lex(source)
 }
 
 #[cfg(test)]
