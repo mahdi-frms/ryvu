@@ -44,9 +44,9 @@ macro_rules! pos {
     };
 }
 macro_rules! token {
-    ($k:expr,$t:expr,$l:expr,$c:expr) => {
+    ($k:ident,$t:expr,$l:expr,$c:expr) => {
         Token::new(
-            $k,$t.to_string(),
+            crate::compile::TokenKind::$k,$t.to_string(),
             TokenPosition::new($l,$c)
         )
     };
@@ -113,11 +113,7 @@ mod test {
         let source = "    ";
         let tokens = lex(source);
         assert_eq!(tokens,vec![
-            Token{
-                kind:crate::compile::TokenKind::Space,
-                position:TokenPosition{line:0,ch:0},
-                text:String::from(source)
-            }
+            token!(Space,source,0,0)
         ]);
     }
 
@@ -126,36 +122,12 @@ mod test {
         let source = "    \n   \n\n     ";
         let tokens = lex(source);
         assert_eq!(tokens,vec![
-            Token{
-                kind:crate::compile::TokenKind::Space,
-                position:TokenPosition{line:0,ch:0},
-                text:String::from("    ")
-            },
-            Token{
-                kind:crate::compile::TokenKind::EndLine,
-                position:TokenPosition{line:0,ch:4},
-                text:String::from("\n")
-            },
-            Token{
-                kind:crate::compile::TokenKind::Space,
-                position:TokenPosition{line:1,ch:0},
-                text:String::from("   ")
-            },
-            Token{
-                kind:crate::compile::TokenKind::EndLine,
-                position:TokenPosition{line:1,ch:3},
-                text:String::from("\n")
-            },
-            Token{
-                kind:crate::compile::TokenKind::EndLine,
-                position:TokenPosition{line:2,ch:0},
-                text:String::from("\n")
-            },
-            Token{
-                kind:crate::compile::TokenKind::Space,
-                position:TokenPosition{line:3,ch:0},
-                text:String::from("     ")
-            }
+            token!(Space,"    ",0,0),
+            token!(EndLine,"\n",0,4),
+            token!(Space,"   ",1,0),
+            token!(EndLine,"\n",1,3),
+            token!(EndLine,"\n",2,0),
+            token!(Space,"     ",3,0)
         ]);
     }
     #[test]
@@ -163,41 +135,13 @@ mod test {
         let source = "  ; \n   \n;";
         let tokens = lex(source);
         assert_eq!(tokens,vec![
-            Token{
-                kind:crate::compile::TokenKind::Space,
-                position:TokenPosition{line:0,ch:0},
-                text:String::from("  ")
-            },
-            Token{
-                kind:crate::compile::TokenKind::Semicolon,
-                position:TokenPosition{line:0,ch:2},
-                text:String::from(";")
-            },
-            Token{
-                kind:crate::compile::TokenKind::Space,
-                position:TokenPosition{line:0,ch:3},
-                text:String::from(" ")
-            },
-            Token{
-                kind:crate::compile::TokenKind::EndLine,
-                position:TokenPosition{line:0,ch:4},
-                text:String::from("\n")
-            },
-            Token{
-                kind:crate::compile::TokenKind::Space,
-                position:TokenPosition{line:1,ch:0},
-                text:String::from("   ")
-            },
-            Token{
-                kind:crate::compile::TokenKind::EndLine,
-                position:TokenPosition{line:1,ch:3},
-                text:String::from("\n")
-            },
-            Token{
-                kind:crate::compile::TokenKind::Semicolon,
-                position:TokenPosition{line:2,ch:0},
-                text:String::from(";")
-            }
+            token!(Space,"  ",0,0),
+            token!(Semicolon,";",0,2),
+            token!(Space," ",0,3),
+            token!(EndLine,"\n",0,4),
+            token!(Space,"   ",1,0),
+            token!(EndLine,"\n",1,3),
+            token!(Semicolon,";",2,0)
         ]);
     }
 }
