@@ -66,26 +66,29 @@ impl Lexer {
             self.buffer.clear();
         }
     }
+    fn push_signes(&mut self,ch:char){
+        self.push_space();
+        if ch == ';' {
+            self.tokens.push(token!(Semicolon,ch,self.line,self.char_index));
+        }
+        else if ch == '.' {
+            self.tokens.push(token!(Block,ch,self.line,self.char_index));
+        }
+        else if ch == '$' {
+            self.tokens.push(token!(Port,ch,self.line,self.char_index));
+        }
+        else {
+            self.tokens.push(token!(Charge,ch,self.line,self.char_index));
+        }
+        self.char_index += 1;
+    }
     fn lex(&mut self,source:&str)->Vec<Token> {
         for ch in source.chars() {
             if ch == ' ' {
                 self.buffer.push(ch);
             }
             else if [';','.','>','$'].contains(&ch) {
-                self.push_space();
-                if ch == ';' {
-                    self.tokens.push(token!(Semicolon,ch,self.line,self.char_index));
-                }
-                else if ch == '.' {
-                    self.tokens.push(token!(Block,ch,self.line,self.char_index));
-                }
-                else if ch == '$' {
-                    self.tokens.push(token!(Port,ch,self.line,self.char_index));
-                }
-                else {
-                    self.tokens.push(token!(Charge,ch,self.line,self.char_index));
-                }
-                self.char_index += 1;
+                self.push_signes(ch);
             }
             else{
                 self.push_space();
