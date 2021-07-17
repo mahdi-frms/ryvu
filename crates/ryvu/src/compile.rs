@@ -68,18 +68,13 @@ impl Lexer {
     }
     fn push_signes(&mut self,ch:char){
         self.push_space();
-        if ch == ';' {
-            self.tokens.push(token!(Semicolon,ch,self.line,self.char_index));
-        }
-        else if ch == '.' {
-            self.tokens.push(token!(Block,ch,self.line,self.char_index));
-        }
-        else if ch == '$' {
-            self.tokens.push(token!(Port,ch,self.line,self.char_index));
-        }
-        else {
-            self.tokens.push(token!(Charge,ch,self.line,self.char_index));
-        }
+        let kind = match ch {
+            ';' => TokenKind::Semicolon,
+            '$' => TokenKind::Port,
+            '>' => TokenKind::Charge,
+            _ => TokenKind::Block
+        };
+        self.tokens.push(Token::new(kind, ch.to_string(), TokenPosition::new(self.line,self.char_index)));
         self.char_index += 1;
     }
     fn lex(&mut self,source:&str)->Vec<Token> {
