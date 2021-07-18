@@ -56,7 +56,7 @@ pub struct SourcePosition {
 macro_rules! token {
     ($k:ident,$t:expr,$l:expr,$c:expr) => {
         Token::new(
-            crate::compile::TokenKind::$k,$t.to_string(),
+            crate::lex::TokenKind::$k,$t.to_string(),
             SourcePosition::new($l,$c)
         )
     };
@@ -214,7 +214,7 @@ impl SourcePosition {
 #[cfg(test)]
 mod test {
 
-    use crate::compile::{Token, LexerError, LexerErrorKind, SourcePosition, lex};
+    use crate::lex::{Token, LexerError, LexerErrorKind, SourcePosition, lex};
 
     #[test]
     fn empty_source(){
