@@ -1,3 +1,20 @@
+#[derive(Default)]
+struct Lexer {
+    tokens:Vec<Token>,
+    buffer:String,
+    line:usize,
+    char_index:usize,
+    buffer_is_space:bool
+}
+
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct Token {
+    kind:TokenKind,
+    text:String,
+    position:TokenPosition
+}
+
 #[derive(PartialEq, Eq, Debug)]
 pub enum TokenKind {
     Port,
@@ -15,29 +32,6 @@ pub struct TokenPosition {
     ch:usize
 }
 
-#[derive(PartialEq, Eq, Debug)]
-pub struct Token {
-    kind:TokenKind,
-    text:String,
-    position:TokenPosition
-}
-
-impl Token {
-    fn new(kind:TokenKind,text:String,position:TokenPosition)->Token{
-        Token{
-            kind,text,position
-        }
-    }
-}
-
-impl TokenPosition {
-    fn new(line:usize,ch:usize)->TokenPosition{
-        TokenPosition {
-            line,ch
-        }
-    }
-}
-
 macro_rules! token {
     ($k:ident,$t:expr,$l:expr,$c:expr) => {
         Token::new(
@@ -47,14 +41,9 @@ macro_rules! token {
     };
 }
 
-
-#[derive(Default)]
-struct Lexer {
-    tokens:Vec<Token>,
-    buffer:String,
-    line:usize,
-    char_index:usize,
-    buffer_is_space:bool
+pub fn lex(source:&str)->Vec<Token> {
+    let mut lexer = Lexer::default();
+    lexer.lex(source)
 }
 
 impl Lexer {
@@ -137,9 +126,21 @@ impl Lexer {
     }
 }
 
-pub fn lex(source:&str)->Vec<Token> {
-    let mut lexer = Lexer::default();
-    lexer.lex(source)
+
+impl Token {
+    fn new(kind:TokenKind,text:String,position:TokenPosition)->Token{
+        Token{
+            kind,text,position
+        }
+    }
+}
+
+impl TokenPosition {
+    fn new(line:usize,ch:usize)->TokenPosition{
+        TokenPosition {
+            line,ch
+        }
+    }
 }
 
 #[cfg(test)]
