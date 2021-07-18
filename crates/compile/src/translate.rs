@@ -5,10 +5,24 @@ use crate::lex::{Token,TokenKind};
 
 #[derive(Default)]
 struct Translator {
+    state:TranslatorExpect,
     indexer:Indexer,
     builder:ModuleBuilder,
     once:String,
     is_charge:bool
+}
+
+enum TranslatorExpect {
+    Statement,
+    Operator,
+    Identifier,
+    Terminate
+}
+
+impl Default for TranslatorExpect {
+    fn default() -> Self {
+        TranslatorExpect::Statement
+    }
 }
 
 #[derive(Default)]
@@ -30,37 +44,74 @@ impl Indexer {
 
 impl Translator {
 
-    fn handle_ident(&mut self,token:&Token){
-        if self.once.len() > 0 {
-            if self.is_charge {
-                self.builder.charge(
-                    self.indexer.index(self.once.clone()),
-                    self.indexer.index(token.text().to_owned()),
-                );
-            }
-            else {
-                self.builder.block(
-                    self.indexer.index(self.once.clone()),
-                    self.indexer.index(token.text().to_owned())
-                );
+    fn handle_ident(&mut self,token_text:&str){
+        match self.state {
+            TranslatorExpect::Statement => {
+                self.once = token_text.to_owned();
+                self.state = TranslatorExpect::Operator;
+            },
+            TranslatorExpect::Identifier => {
+                self.connect(token_text);
+                self.once = token_text.to_owned();
+                self.state = TranslatorExpect::Terminate;
+            },
+            _ =>{
+                // err
             }
         }
-        self.once = token.text().to_owned();
+    }
+    fn connect(&mut self,token_text:&str){
+        if self.is_charge {
+            self.builder.charge(
+                self.indexer.index(self.once.clone()),
+                self.indexer.index(token_text.to_owned())
+            );
+        }
+        else {
+            self.builder.block(
+                self.indexer.index(self.once.clone()),
+                self.indexer.index(token_text.to_owned())
+            );
+        }
+    }
+    fn handle_semicolon(&mut self){
+        match self.state {
+            TranslatorExpect::Terminate => {
+                self.once = String::new();
+                self.state = TranslatorExpect::Statement;
+            },
+            _ =>{
+                // err
+            }
+        }
+    }
+    fn handle_operator(&mut self,kind:TokenKind){
+        match self.state {
+            TranslatorExpect::Terminate | TranslatorExpect::Operator=> {
+                if kind == TokenKind::Charge {
+                    self.is_charge = true;
+                }
+                else{
+                    self.is_charge = false;
+                }
+                self.state = TranslatorExpect::Identifier;
+            },
+            _ =>{
+                // err
+            }
+        }
     }
     fn translate(&mut self,tokens:Vec<Token>)->Module{
         for token in tokens.iter() {
-            match *token.kind() {
+            match token.kind() {
                 TokenKind::Identifier=>{
-                    self.handle_ident(token);
+                    self.handle_ident(token.text());
                 },
-                TokenKind::Charge=>{
-                    self.is_charge = true;
-                },
-                TokenKind::Block=>{
-                    self.is_charge = false;
+                TokenKind::Charge | TokenKind::Block=>{
+                    self.handle_operator(token.kind());
                 },
                 TokenKind::Semicolon=>{
-                    self.once = String::new();
+                    self.handle_semicolon();
                 },
                 _=>{
 

@@ -36,7 +36,7 @@ pub enum LexerErrorKind {
     InvalidIdentifier(String)
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug,Clone, Copy)]
 pub enum TokenKind {
     Port,
     Identifier,
@@ -202,8 +202,8 @@ impl Token {
         }
     }
 
-    pub fn kind(&self) -> &TokenKind {
-        &self.kind
+    pub fn kind(&self) -> TokenKind {
+        self.kind
     }
 
     pub fn text(&self) -> &str {
