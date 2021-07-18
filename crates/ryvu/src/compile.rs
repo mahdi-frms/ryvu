@@ -53,38 +53,29 @@ struct Lexer {
     tokens:Vec<Token>,
     buffer:String,
     line:usize,
-    char_index:usize   
+    char_index:usize,
+    buffer_is_space:bool
 }
 
 impl Lexer {
-    fn is_alphabetic(ch:char)->bool {
-        (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
-    }
-    fn is_numeric(ch:char)->bool {
-        ch >= '0' && ch <= '9'
-    }
-    fn is_alphanumeric(ch:char)->bool {
-        Self::is_alphabetic(ch) || Self::is_numeric(ch)
-    }
-    fn push_space(&mut self){
-        if !self.buffer.is_empty() && self.buffer.chars().peekable().peek().unwrap() == &' ' {
-            self.tokens.push(
-                token!(Space,self.buffer.clone(),self.line,self.char_index)
-            );
-            self.char_index += self.buffer.len();
-            self.buffer.clear();
+    fn lex(&mut self,source:&str)->Vec<Token> {
+        for ch in source.chars() {
+            if ch == ' ' {
+                self.handle_space();
+            }
+            else if [';','.','>','$'].contains(&ch) {
+                self.handle_signs(ch);
+            }
+            else if Self::is_alphanumeric(ch) {
+                self.handle_ident(ch)
+            }
+            else{
+                self.handle_endl();
+            }
         }
+        self.finalize()
     }
-    fn push_ident(&mut self){
-        if !self.buffer.is_empty() && self.buffer.chars().peekable().peek().unwrap() != &' ' {
-            self.tokens.push(
-                token!(Identifier,self.buffer.clone(),self.line,self.char_index)
-            );
-            self.char_index += self.buffer.len();
-            self.buffer.clear();
-        }
-    }
-    fn push_signes(&mut self,ch:char){
+    fn handle_signs(&mut self,ch:char){
         self.push_space();
         self.push_ident();
         let kind = match ch {
@@ -96,30 +87,53 @@ impl Lexer {
         self.tokens.push(Token::new(kind, ch.to_string(), TokenPosition::new(self.line,self.char_index)));
         self.char_index += 1;
     }
-    fn lex(&mut self,source:&str)->Vec<Token> {
-        for ch in source.chars() {
-            if ch == ' ' {
-                self.push_ident();
-                self.buffer.push(ch);
-            }
-            else if [';','.','>','$'].contains(&ch) {
-                self.push_signes(ch);
-            }
-            else if Self::is_alphanumeric(ch) {
-                self.push_space();
-                self.buffer.push(ch);
-            }
-            else{
-                self.push_space();
-                self.push_ident();
-                self.tokens.push(token!(EndLine,"\n",self.line,self.char_index));
-                self.line += 1;
-                self.char_index = 0;
-            }
-        }
+    fn handle_space(&mut self){
+        self.push_ident();
+        self.buffer_is_space = true;
+        self.buffer.push(' ');
+    }
+    fn handle_ident(&mut self,ch:char){
+        self.push_space();
+        self.buffer_is_space = false;
+        self.buffer.push(ch);
+    }
+    fn handle_endl(&mut self){
+        self.push_space();
+        self.push_ident();
+        self.tokens.push(token!(EndLine,"\n",self.line,self.char_index));
+        self.line += 1;
+        self.char_index = 0;
+    }
+    fn finalize(&mut self)->Vec<Token> {
         self.push_space();
         self.push_ident();
         std::mem::replace(&mut self.tokens, vec![])
+    }
+    fn is_alphanumeric(ch:char)->bool {
+        Self::is_alphabetic(ch) || Self::is_numeric(ch)
+    }
+    fn push_space(&mut self){
+        if !self.buffer.is_empty() && self.buffer_is_space {
+            self.push_buffer(TokenKind::Space);
+        }
+    }
+    fn push_ident(&mut self){
+        if !self.buffer.is_empty() && !self.buffer_is_space {
+            self.push_buffer(TokenKind::Identifier);
+        }
+    }
+    fn is_alphabetic(ch:char)->bool {
+        (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
+    }
+    fn is_numeric(ch:char)->bool {
+        ch >= '0' && ch <= '9'
+    }
+    fn push_buffer(&mut self,kind:TokenKind) {
+        self.tokens.push(
+            Token::new(kind,self.buffer.clone(),TokenPosition::new(self.line,self.char_index))
+        );
+        self.char_index += self.buffer.len();
+        self.buffer.clear();
     }
 }
 
