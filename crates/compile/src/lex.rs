@@ -57,7 +57,7 @@ macro_rules! token {
     ($k:ident,$t:expr,$l:expr,$c:expr) => {
         Token::new(
             crate::lex::TokenKind::$k,$t.to_string(),
-            SourcePosition::new($l,$c)
+            crate::lex::SourcePosition::new($l,$c)
         )
     };
 }
@@ -196,15 +196,19 @@ impl Default for BufferState {
 }
 
 impl Token {
-    fn new(kind:TokenKind,text:String,position:SourcePosition)->Token{
+    pub fn new(kind:TokenKind,text:String,position:SourcePosition)->Token{
         Token{
             kind,text,position
         }
     }
+
+    pub fn kind(&self) -> &TokenKind {
+        &self.kind
+    }
 }
 
 impl SourcePosition {
-    fn new(line:usize,ch:usize)->SourcePosition{
+    pub fn new(line:usize,ch:usize)->SourcePosition{
         SourcePosition {
             line,ch
         }

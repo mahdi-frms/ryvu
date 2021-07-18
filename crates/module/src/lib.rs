@@ -1,10 +1,10 @@
-#[derive(Default)]
+#[derive(Default,PartialEq, Eq, Debug)]
 pub struct NodeConnections {
     pub charging:Vec<usize>,
     pub blocking:Vec<usize>
 }
 
-#[derive(Default)]
+#[derive(Default,PartialEq, Eq,Debug)]
 pub struct Module {
     pub connections:Vec<NodeConnections>,
     pub inputs:Vec<usize>,
