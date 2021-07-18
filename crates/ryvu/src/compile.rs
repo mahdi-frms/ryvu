@@ -14,17 +14,18 @@ pub struct LexerError{
     position:SourcePosition
 }
 
-#[derive(PartialEq, Eq, Debug)]
-pub enum LexerErrorKind {
-    UnknownChar(char),
-    InvalidIdentifier(String)
-}
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Token {
     kind:TokenKind,
     text:String,
     position:SourcePosition
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum LexerErrorKind {
+    UnknownChar(char),
+    InvalidIdentifier(String)
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -74,16 +75,19 @@ impl Lexer {
                 self.handle_endl();
             }
             else{
-                self.push_space();
-                self.push_ident();
-                self.errors.push(LexerError{
-                    error_kind:LexerErrorKind::UnknownChar(ch),
-                    position:SourcePosition::new(self.line,self.char_index)
-                });
-                self.char_index += 1;
+                self.handle_unknown(ch);
             }
         }
         self.finalize()
+    }
+    fn handle_unknown(&mut self,ch:char){
+        self.push_space();
+        self.push_ident();
+        self.errors.push(LexerError{
+            error_kind:LexerErrorKind::UnknownChar(ch),
+            position:self.current_pos()
+        });
+        self.char_index += 1;
     }
     fn handle_signs(&mut self,ch:char){
         self.push_space();
@@ -94,7 +98,7 @@ impl Lexer {
             '>' => TokenKind::Charge,
             _ => TokenKind::Block
         };
-        self.tokens.push(Token::new(kind, ch.to_string(), SourcePosition::new(self.line,self.char_index)));
+        self.tokens.push(Token::new(kind, ch.to_string(), self.current_pos()));
         self.char_index += 1;
     }
     fn handle_space(&mut self){
@@ -125,6 +129,12 @@ impl Lexer {
     fn is_alphanumeric(ch:char)->bool {
         Self::is_alphabetic(ch) || Self::is_numeric(ch)
     }
+    fn current_pos(&self)->SourcePosition{
+        SourcePosition{
+            line:self.line,
+            ch:self.char_index
+        }
+    }
     fn push_space(&mut self){
         if !self.buffer.is_empty() && self.buffer_is_space {
             self.push_buffer(TokenKind::Space);
@@ -143,7 +153,7 @@ impl Lexer {
     }
     fn push_buffer(&mut self,kind:TokenKind) {
         self.tokens.push(
-            Token::new(kind,self.buffer.clone(),SourcePosition::new(self.line,self.char_index))
+            Token::new(kind,self.buffer.clone(),self.current_pos())
         );
         self.char_index += self.buffer.len();
         self.buffer.clear();
