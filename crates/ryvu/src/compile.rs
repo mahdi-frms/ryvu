@@ -16,12 +16,6 @@ enum BufferState{
     Empty
 }
 
-impl Default for BufferState {
-    fn default() -> Self {
-        BufferState::Empty
-    }
-}
-
 #[derive(PartialEq, Eq, Debug)]
 pub struct LexerError{
     error_kind:LexerErrorKind,
@@ -166,13 +160,15 @@ impl Lexer {
             self.push_buffer(TokenKind::Identifier);
         }
         if self.buffer_state == BufferState::InvIdent {
-            self.errors.push(LexerError{
-                error_kind:LexerErrorKind::InvalidIdentifier(self.buffer.clone()),
-                position:self.current_pos()
-            });
-            self.char_index += self.buffer.len();
-            self.buffer.clear();
+            self.push_inv_ident();
         }
+    }
+    fn push_inv_ident(&mut self){
+        self.errors.push(LexerError{
+            error_kind:LexerErrorKind::InvalidIdentifier(self.buffer.clone()),
+            position:self.current_pos()
+        });
+        self.clear_buffer();
     }
     fn is_alphabetic(ch:char)->bool {
         (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
@@ -184,12 +180,20 @@ impl Lexer {
         self.tokens.push(
             Token::new(kind,self.buffer.clone(),self.current_pos())
         );
+        self.clear_buffer();
+    }
+    fn clear_buffer(&mut self){
         self.char_index += self.buffer.len();
         self.buffer.clear();
         self.buffer_state = BufferState::Empty;
     }
 }
 
+impl Default for BufferState {
+    fn default() -> Self {
+        BufferState::Empty
+    }
+}
 
 impl Token {
     fn new(kind:TokenKind,text:String,position:SourcePosition)->Token{
