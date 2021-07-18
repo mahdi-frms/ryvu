@@ -1,29 +1,49 @@
+use std::collections::HashMap;
+
 use module::{Module, ModuleBuilder};
 use crate::lex::{Token,TokenKind};
 
 #[derive(Default)]
 struct Translator {
+    indexer:Indexer,
     builder:ModuleBuilder,
     once:String,
     is_charge:bool
+}
+
+#[derive(Default)]
+struct Indexer{
+    map:HashMap<String,usize>
+}
+
+impl Indexer {
+    fn index(&mut self,ident:String)->usize {
+        match self.map.get(&ident) {
+            Some(index)=> *index,
+            None=>{
+                self.map.insert(ident, self.map.len());
+                self.map.len()-1
+            }
+        }
+    }
 }
 
 impl Translator {
 
     fn handle_ident(&mut self,token:&Token){
         if self.once.len() > 0 {
-            let next = if token.text().to_owned() == self.once {
-                0
-            }
-            else {
-                1
-            };
             if self.is_charge {
-                self.builder.charge(0, next);
+                self.builder.charge(
+                    self.indexer.index(self.once.clone()),
+                    self.indexer.index(token.text().to_owned()),
+                );
             }
             else {
-                self.builder.block(0, next);
+                self.builder.block(
+                    self.indexer.index(self.once.clone()),
+                    self.indexer.index(token.text().to_owned()),);
             }
+            self.once = token.text().to_owned()
         }
         else{
             self.once = token.text().to_owned();
@@ -123,17 +143,34 @@ mod test {
 
 
     #[test]
-    fn single_block(){
+    fn chained_statements(){
         let mut module = ModuleBuilder::default();
         module.block(0, 1);
+        module.charge(1, 2);
         test_case(vec![
-            token!(Space,"    ",0,0),
-            token!(Identifier,"a",0,4),
-            token!(Space,"   ",0,5),
-            token!(Block,".",0,8),
-            token!(Space,"  ",0,9),
-            token!(Identifier,"c",0,11),
-            token!(Space," ",0,12)
+            token!(Identifier,"a",0,0),
+            token!(Space,"   ",0,1),
+            token!(Block,".",0,4),
+            token!(Space,"  ",0,5),
+            token!(Identifier,"b",0,7),
+            token!(Charge,">",0,8),
+            token!(Identifier,"c",0,9),
+        ], module.build())
+    }
+
+    #[test]
+    fn chained_statements_reoccurring_idents(){
+        let mut module = ModuleBuilder::default();
+        module.block(0, 1);
+        module.charge(1, 0);
+        test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(Space,"   ",0,1),
+            token!(Block,".",0,4),
+            token!(Space,"  ",0,5),
+            token!(Identifier,"b",0,7),
+            token!(Charge,">",0,8),
+            token!(Identifier,"a",0,9),
         ], module.build())
     }
 }
