@@ -1,4 +1,4 @@
-use crate::module::Module;
+pub use module::{Module,ModuleBuilder};
 
 #[derive(Default)]
 struct NodeState {
@@ -53,7 +53,7 @@ impl Network {
 
 #[cfg(test)]
 mod test {
-    use crate::module::ModuleBuilder;
+    use crate::network::ModuleBuilder;
     use crate::network::Network;
 
     

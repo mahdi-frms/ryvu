@@ -1,7 +1,6 @@
 [package]
-name = "ryvu"
+name = "module"
 version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-module = {path="../module"}
