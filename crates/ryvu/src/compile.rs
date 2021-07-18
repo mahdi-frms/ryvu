@@ -5,7 +5,21 @@ struct Lexer {
     buffer:String,
     line:usize,
     char_index:usize,
-    buffer_is_space:bool
+    buffer_state:BufferState
+}
+
+#[derive(PartialEq, Eq)]
+enum BufferState{
+    Space,
+    Ident,
+    InvIdent,
+    Empty
+}
+
+impl Default for BufferState {
+    fn default() -> Self {
+        BufferState::Empty
+    }
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -103,12 +117,19 @@ impl Lexer {
     }
     fn handle_space(&mut self){
         self.push_ident();
-        self.buffer_is_space = true;
+        self.buffer_state = BufferState::Space;
         self.buffer.push(' ');
     }
     fn handle_ident(&mut self,ch:char){
         self.push_space();
-        self.buffer_is_space = false;
+        if self.buffer_state == BufferState::Empty {
+            if Self::is_numeric(ch) {
+                self.buffer_state = BufferState::InvIdent;
+            }
+            else{
+                self.buffer_state = BufferState::Ident;
+            }
+        }
         self.buffer.push(ch);
     }
     fn handle_endl(&mut self){
@@ -136,13 +157,21 @@ impl Lexer {
         }
     }
     fn push_space(&mut self){
-        if !self.buffer.is_empty() && self.buffer_is_space {
+        if self.buffer_state == BufferState::Space {
             self.push_buffer(TokenKind::Space);
         }
     }
     fn push_ident(&mut self){
-        if !self.buffer.is_empty() && !self.buffer_is_space {
+        if self.buffer_state == BufferState::Ident {
             self.push_buffer(TokenKind::Identifier);
+        }
+        if self.buffer_state == BufferState::InvIdent {
+            self.errors.push(LexerError{
+                error_kind:LexerErrorKind::InvalidIdentifier(self.buffer.clone()),
+                position:self.current_pos()
+            });
+            self.char_index += self.buffer.len();
+            self.buffer.clear();
         }
     }
     fn is_alphabetic(ch:char)->bool {
@@ -157,6 +186,7 @@ impl Lexer {
         );
         self.char_index += self.buffer.len();
         self.buffer.clear();
+        self.buffer_state = BufferState::Empty;
     }
 }
 
@@ -317,6 +347,26 @@ mod test {
         ]);
         assert_eq!(errors,vec![
             LexerError{error_kind:LexerErrorKind::UnknownChar('@'),position:SourcePosition{line:0,ch:7}}
+        ]);
+    }
+
+    #[test]
+    fn error_on_invalid_ident(){
+        let source = "$1nPuT > $Ou4put;\nMID";
+        let (tokens,errors) = lex(source);
+        assert_eq!(tokens,vec![
+            token!(Port,"$",0,0),
+            token!(Space," ",0,6),
+            token!(Charge,">",0,7),
+            token!(Space," ",0,8),
+            token!(Port,"$",0,9),
+            token!(Identifier,"Ou4put",0,10),
+            token!(Semicolon,";",0,16),
+            token!(EndLine,"\n",0,17),
+            token!(Identifier,"MID",1,0),
+        ]);
+        assert_eq!(errors,vec![
+            LexerError{error_kind:LexerErrorKind::InvalidIdentifier("1nPuT".to_string()),position:SourcePosition{line:0,ch:1}}
         ]);
     }
 }
