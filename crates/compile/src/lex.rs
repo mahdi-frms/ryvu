@@ -205,6 +205,10 @@ impl Token {
     pub fn kind(&self) -> &TokenKind {
         &self.kind
     }
+
+    pub fn text(&self) -> &str {
+        self.text.as_str()
+    }
 }
 
 impl SourcePosition {
