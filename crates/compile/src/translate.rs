@@ -41,13 +41,11 @@ impl Translator {
             else {
                 self.builder.block(
                     self.indexer.index(self.once.clone()),
-                    self.indexer.index(token.text().to_owned()),);
+                    self.indexer.index(token.text().to_owned())
+                );
             }
-            self.once = token.text().to_owned()
         }
-        else{
-            self.once = token.text().to_owned();
-        }
+        self.once = token.text().to_owned();
     }
     fn translate(&mut self,tokens:Vec<Token>)->Module{
         for token in tokens.iter() {
@@ -60,6 +58,9 @@ impl Translator {
                 },
                 TokenKind::Block=>{
                     self.is_charge = false;
+                },
+                TokenKind::Semicolon=>{
+                    self.once = String::new();
                 },
                 _=>{
 
@@ -171,6 +172,30 @@ mod test {
             token!(Identifier,"b",0,7),
             token!(Charge,">",0,8),
             token!(Identifier,"a",0,9),
+        ], module.build())
+    }
+
+
+    #[test]
+    fn semincolon_statement_seperation(){
+        let mut module = ModuleBuilder::default();
+        module.block(0, 1);
+        module.charge(1, 2);
+        module.charge(0, 3);
+        test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(Space,"   ",0,1),
+            token!(Block,".",0,4),
+            token!(Space,"  ",0,5),
+            token!(Identifier,"b",0,7),
+            token!(Charge,">",0,8),
+            token!(Identifier,"c",0,9),
+            token!(Semicolon,";",0,10),
+            token!(Space," ",0,11),
+            token!(Identifier,"a",0,12),
+            token!(Charge,">",0,13),
+            token!(Identifier,"d",0,14),
+            token!(Semicolon,";",0,15),
         ], module.build())
     }
 }
