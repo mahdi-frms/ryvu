@@ -1,18 +1,30 @@
 #[derive(Default)]
 struct Lexer {
     tokens:Vec<Token>,
+    errors:Vec<LexerError>,
     buffer:String,
     line:usize,
     char_index:usize,
     buffer_is_space:bool
 }
 
+#[derive(PartialEq, Eq, Debug)]
+pub struct LexerError{
+    error_kind:LexerErrorKind,
+    position:SourcePosition
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum LexerErrorKind {
+    UnknownChar(char),
+    InvalidIdentifier(String)
+}
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Token {
     kind:TokenKind,
     text:String,
-    position:TokenPosition
+    position:SourcePosition
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -27,7 +39,7 @@ pub enum TokenKind {
 }
 
 #[derive(PartialEq, Eq, Debug)]
-pub struct TokenPosition {
+pub struct SourcePosition {
     line:usize,
     ch:usize
 }
@@ -36,18 +48,18 @@ macro_rules! token {
     ($k:ident,$t:expr,$l:expr,$c:expr) => {
         Token::new(
             crate::compile::TokenKind::$k,$t.to_string(),
-            TokenPosition::new($l,$c)
+            SourcePosition::new($l,$c)
         )
     };
 }
 
-pub fn lex(source:&str)->Vec<Token> {
+pub fn lex(source:&str)->(Vec<Token>,Vec<LexerError>) {
     let mut lexer = Lexer::default();
     lexer.lex(source)
 }
 
 impl Lexer {
-    fn lex(&mut self,source:&str)->Vec<Token> {
+    fn lex(&mut self,source:&str)->(Vec<Token>,Vec<LexerError>) {
         for ch in source.chars() {
             if ch == ' ' {
                 self.handle_space();
@@ -58,8 +70,17 @@ impl Lexer {
             else if Self::is_alphanumeric(ch) {
                 self.handle_ident(ch)
             }
-            else{
+            else if ch == '\n' {
                 self.handle_endl();
+            }
+            else{
+                self.push_space();
+                self.push_ident();
+                self.errors.push(LexerError{
+                    error_kind:LexerErrorKind::UnknownChar(ch),
+                    position:SourcePosition::new(self.line,self.char_index)
+                });
+                self.char_index += 1;
             }
         }
         self.finalize()
@@ -73,7 +94,7 @@ impl Lexer {
             '>' => TokenKind::Charge,
             _ => TokenKind::Block
         };
-        self.tokens.push(Token::new(kind, ch.to_string(), TokenPosition::new(self.line,self.char_index)));
+        self.tokens.push(Token::new(kind, ch.to_string(), SourcePosition::new(self.line,self.char_index)));
         self.char_index += 1;
     }
     fn handle_space(&mut self){
@@ -93,10 +114,13 @@ impl Lexer {
         self.line += 1;
         self.char_index = 0;
     }
-    fn finalize(&mut self)->Vec<Token> {
+    fn finalize(&mut self)-> (Vec<Token>,Vec<LexerError>) {
         self.push_space();
         self.push_ident();
-        std::mem::replace(&mut self.tokens, vec![])
+        (
+            std::mem::replace(&mut self.tokens, vec![]),
+            std::mem::replace(&mut self.errors, vec![])
+        )
     }
     fn is_alphanumeric(ch:char)->bool {
         Self::is_alphabetic(ch) || Self::is_numeric(ch)
@@ -119,7 +143,7 @@ impl Lexer {
     }
     fn push_buffer(&mut self,kind:TokenKind) {
         self.tokens.push(
-            Token::new(kind,self.buffer.clone(),TokenPosition::new(self.line,self.char_index))
+            Token::new(kind,self.buffer.clone(),SourcePosition::new(self.line,self.char_index))
         );
         self.char_index += self.buffer.len();
         self.buffer.clear();
@@ -128,16 +152,16 @@ impl Lexer {
 
 
 impl Token {
-    fn new(kind:TokenKind,text:String,position:TokenPosition)->Token{
+    fn new(kind:TokenKind,text:String,position:SourcePosition)->Token{
         Token{
             kind,text,position
         }
     }
 }
 
-impl TokenPosition {
-    fn new(line:usize,ch:usize)->TokenPosition{
-        TokenPosition {
+impl SourcePosition {
+    fn new(line:usize,ch:usize)->SourcePosition{
+        SourcePosition {
             line,ch
         }
     }
@@ -146,28 +170,30 @@ impl TokenPosition {
 #[cfg(test)]
 mod test {
 
-    use crate::compile::{Token, TokenPosition, lex};
+    use crate::compile::{Token, LexerError, LexerErrorKind, SourcePosition, lex};
 
     #[test]
     fn empty_source(){
         let source = "";
-        let tokens = lex(source);
+        let (tokens,errors) = lex(source);
         assert_eq!(tokens,vec![]);
+        assert_eq!(errors,vec![]);
     }
 
     #[test]
     fn space_only(){
         let source = "    ";
-        let tokens = lex(source);
+        let (tokens,errors) = lex(source);
         assert_eq!(tokens,vec![
             token!(Space,source,0,0)
         ]);
+        assert_eq!(errors,vec![]);
     }
 
     #[test]
     fn spaces_and_endlines(){
         let source = "    \n   \n\n     ";
-        let tokens = lex(source);
+        let (tokens,errors) = lex(source);
         assert_eq!(tokens,vec![
             token!(Space,"    ",0,0),
             token!(EndLine,"\n",0,4),
@@ -176,11 +202,12 @@ mod test {
             token!(EndLine,"\n",2,0),
             token!(Space,"     ",3,0)
         ]);
+        assert_eq!(errors,vec![]);
     }
     #[test]
     fn supports_charge(){
         let source = "  > \n   \n>";
-        let tokens = lex(source);
+        let (tokens,errors) = lex(source);
         assert_eq!(tokens,vec![
             token!(Space,"  ",0,0),
             token!(Charge,">",0,2),
@@ -190,12 +217,13 @@ mod test {
             token!(EndLine,"\n",1,3),
             token!(Charge,">",2,0)
         ]);
+        assert_eq!(errors,vec![]);
     }
 
     #[test]
     fn supports_block(){
         let source = "  . \n   \n.";
-        let tokens = lex(source);
+        let (tokens,errors) = lex(source);
         assert_eq!(tokens,vec![
             token!(Space,"  ",0,0),
             token!(Block,".",0,2),
@@ -205,12 +233,13 @@ mod test {
             token!(EndLine,"\n",1,3),
             token!(Block,".",2,0)
         ]);
+        assert_eq!(errors,vec![]);
     }
 
     #[test]
     fn supports_port(){
         let source = "  $ \n   \n$";
-        let tokens = lex(source);
+        let (tokens,errors) = lex(source);
         assert_eq!(tokens,vec![
             token!(Space,"  ",0,0),
             token!(Port,"$",0,2),
@@ -220,12 +249,13 @@ mod test {
             token!(EndLine,"\n",1,3),
             token!(Port,"$",2,0)
         ]);
+        assert_eq!(errors,vec![]);
     }
 
     #[test]
     fn supports_identifier(){
         let source = "$input > $output;\nmid";
-        let tokens = lex(source);
+        let (tokens,errors) = lex(source);
         assert_eq!(tokens,vec![
             token!(Port,"$",0,0),
             token!(Identifier,"input",0,1),
@@ -238,12 +268,13 @@ mod test {
             token!(EndLine,"\n",0,17),
             token!(Identifier,"mid",1,0),
         ]);
+        assert_eq!(errors,vec![]);
     }
 
     #[test]
     fn supports_identifier_uppercase(){
         let source = "$InPuT > $Output;\nMID";
-        let tokens = lex(source);
+        let (tokens,errors) = lex(source);
         assert_eq!(tokens,vec![
             token!(Port,"$",0,0),
             token!(Identifier,"InPuT",0,1),
@@ -255,6 +286,27 @@ mod test {
             token!(Semicolon,";",0,16),
             token!(EndLine,"\n",0,17),
             token!(Identifier,"MID",1,0),
+        ]);
+        assert_eq!(errors,vec![]);
+    }
+
+    #[test]
+    fn error_on_unknown_character(){
+        let source = "$InPuT @ $Output;\nMID";
+        let (tokens,errors) = lex(source);
+        assert_eq!(tokens,vec![
+            token!(Port,"$",0,0),
+            token!(Identifier,"InPuT",0,1),
+            token!(Space," ",0,6),
+            token!(Space," ",0,8),
+            token!(Port,"$",0,9),
+            token!(Identifier,"Output",0,10),
+            token!(Semicolon,";",0,16),
+            token!(EndLine,"\n",0,17),
+            token!(Identifier,"MID",1,0),
+        ]);
+        assert_eq!(errors,vec![
+            LexerError{error_kind:LexerErrorKind::UnknownChar('@'),position:SourcePosition{line:0,ch:7}}
         ]);
     }
 }
