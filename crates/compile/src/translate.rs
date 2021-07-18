@@ -1,43 +1,58 @@
 use module::{Module, ModuleBuilder};
 use crate::lex::{Token,TokenKind};
 
-fn translate(tokens:Vec<Token>)->Module {
-    let mut builder = ModuleBuilder::default();
-    let mut once = String::new();
-    let mut is_charge = false;
-    for token in tokens.iter() {
-        match *token.kind() {
-            TokenKind::Identifier=>{
-                if once.len() > 0 {
-                    let next = if token.text().to_owned() == once {
-                        0
-                    }
-                    else {
-                        1
-                    };
-                    if is_charge {
-                        builder.charge(0, next);
-                    }
-                    else {
-                        builder.block(0, next);
-                    }
-                }
-                else{
-                    once = token.text().to_owned();
-                }
-            },
-            TokenKind::Charge=>{
-                is_charge = true;
-            },
-            TokenKind::Block=>{
-                is_charge = false;
-            },
-            _=>{
-                
+#[derive(Default)]
+struct Translator {
+    builder:ModuleBuilder,
+    once:String,
+    is_charge:bool
+}
+
+impl Translator {
+
+    fn handle_ident(&mut self,token:&Token){
+        if self.once.len() > 0 {
+            let next = if token.text().to_owned() == self.once {
+                0
+            }
+            else {
+                1
+            };
+            if self.is_charge {
+                self.builder.charge(0, next);
+            }
+            else {
+                self.builder.block(0, next);
             }
         }
+        else{
+            self.once = token.text().to_owned();
+        }
     }
-    builder.build()
+    fn translate(&mut self,tokens:Vec<Token>)->Module{
+        for token in tokens.iter() {
+            match *token.kind() {
+                TokenKind::Identifier=>{
+                    self.handle_ident(token);
+                },
+                TokenKind::Charge=>{
+                    self.is_charge = true;
+                },
+                TokenKind::Block=>{
+                    self.is_charge = false;
+                },
+                _=>{
+
+                }
+            }
+        }
+        self.builder.build()
+    }
+}
+
+fn translate(tokens:Vec<Token>)->Module {
+    let mut translator = Translator::default();
+    translator.translate(tokens)
 }
 
 #[cfg(test)]
