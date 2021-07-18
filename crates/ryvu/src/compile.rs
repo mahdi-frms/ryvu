@@ -58,7 +58,7 @@ struct Lexer {
 
 impl Lexer {
     fn is_alphabetic(ch:char)->bool {
-        (ch >= 'a' && ch <= 'z') || ch == '_'
+        (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
     }
     fn is_numeric(ch:char)->bool {
         ch >= '0' && ch <= '9'
@@ -222,6 +222,24 @@ mod test {
             token!(Semicolon,";",0,16),
             token!(EndLine,"\n",0,17),
             token!(Identifier,"mid",1,0),
+        ]);
+    }
+
+    #[test]
+    fn supports_identifier_uppercase(){
+        let source = "$InPuT > $Output;\nMID";
+        let tokens = lex(source);
+        assert_eq!(tokens,vec![
+            token!(Port,"$",0,0),
+            token!(Identifier,"InPuT",0,1),
+            token!(Space," ",0,6),
+            token!(Charge,">",0,7),
+            token!(Space," ",0,8),
+            token!(Port,"$",0,9),
+            token!(Identifier,"Output",0,10),
+            token!(Semicolon,";",0,16),
+            token!(EndLine,"\n",0,17),
+            token!(Identifier,"MID",1,0),
         ]);
     }
 }
