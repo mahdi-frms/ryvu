@@ -47,7 +47,7 @@ pub enum TokenKind {
     Semicolon
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug,Clone, Copy)]
 pub struct SourcePosition {
     line:usize,
     ch:usize
@@ -208,6 +208,11 @@ impl Token {
 
     pub fn text(&self) -> &str {
         self.text.as_str()
+    }
+
+    /// Get a reference to the token's position.
+    pub fn position(&self) -> SourcePosition {
+        self.position
     }
 }
 

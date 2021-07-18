@@ -1,27 +1,34 @@
 use std::collections::HashMap;
-
 use module::{Module, ModuleBuilder};
-use crate::lex::{Token,TokenKind};
+use crate::lex::{SourcePosition, Token, TokenKind};
 
 #[derive(Default)]
 struct Translator {
-    state:TranslatorExpect,
+    state:TranslatorState,
     indexer:Indexer,
     builder:ModuleBuilder,
     once:String,
-    is_charge:bool
+    is_charge:bool,
+    errors:Vec<TranslatorError>
 }
 
-enum TranslatorExpect {
+#[derive(Debug,PartialEq, Eq)]
+enum TranslatorError {
+    unexpected_token(SourcePosition)
+}
+
+#[derive(PartialEq, Eq)]
+enum TranslatorState {
     Statement,
     Operator,
     Identifier,
-    Terminate
+    Terminate,
+    Error
 }
 
-impl Default for TranslatorExpect {
+impl Default for TranslatorState {
     fn default() -> Self {
-        TranslatorExpect::Statement
+        TranslatorState::Statement
     }
 }
 
@@ -44,19 +51,24 @@ impl Indexer {
 
 impl Translator {
 
-    fn handle_ident(&mut self,token_text:&str){
+    fn unexpected_error(&mut self,token:&Token){
+        self.errors.push(TranslatorError::unexpected_token(token.position()))
+    }
+
+    fn handle_ident(&mut self,token:&Token){
         match self.state {
-            TranslatorExpect::Statement => {
-                self.once = token_text.to_owned();
-                self.state = TranslatorExpect::Operator;
+            TranslatorState::Statement => {
+                self.once = token.text().to_owned();
+                self.state = TranslatorState::Operator;
             },
-            TranslatorExpect::Identifier => {
-                self.connect(token_text);
-                self.once = token_text.to_owned();
-                self.state = TranslatorExpect::Terminate;
+            TranslatorState::Identifier => {
+                self.connect(token.text());
+                self.once = token.text().to_owned();
+                self.state = TranslatorState::Terminate;
             },
             _ =>{
-                // err
+                self.unexpected_error(token);
+                self.state = TranslatorState::Error;
             }
         }
     }
@@ -74,55 +86,60 @@ impl Translator {
             );
         }
     }
-    fn handle_semicolon(&mut self){
+    fn handle_semicolon(&mut self,token:&Token){
         match self.state {
-            TranslatorExpect::Terminate => {
+            TranslatorState::Terminate | TranslatorState::Error => {
                 self.once = String::new();
-                self.state = TranslatorExpect::Statement;
+                self.state = TranslatorState::Statement;
             },
             _ =>{
-                // err
+                self.unexpected_error(token);
+                self.state = TranslatorState::Error;
             }
         }
     }
-    fn handle_operator(&mut self,kind:TokenKind){
+    fn handle_operator(&mut self,token:&Token){
         match self.state {
-            TranslatorExpect::Terminate | TranslatorExpect::Operator=> {
-                if kind == TokenKind::Charge {
+            TranslatorState::Terminate | TranslatorState::Operator=> {
+                if token.kind() == TokenKind::Charge {
                     self.is_charge = true;
                 }
                 else{
                     self.is_charge = false;
                 }
-                self.state = TranslatorExpect::Identifier;
+                self.state = TranslatorState::Identifier;
             },
             _ =>{
-                // err
+                self.unexpected_error(token);
+                self.state = TranslatorState::Error;
             }
         }
     }
-    fn translate(&mut self,tokens:Vec<Token>)->Module{
+    fn translate(&mut self,tokens:Vec<Token>)->(Module,Vec<TranslatorError>){
         for token in tokens.iter() {
+            if self.state == TranslatorState::Error && token.kind() != TokenKind::Semicolon {
+                continue;
+            }
             match token.kind() {
                 TokenKind::Identifier=>{
-                    self.handle_ident(token.text());
+                    self.handle_ident(token);
                 },
                 TokenKind::Charge | TokenKind::Block=>{
-                    self.handle_operator(token.kind());
+                    self.handle_operator(token);
                 },
                 TokenKind::Semicolon=>{
-                    self.handle_semicolon();
+                    self.handle_semicolon(token);
                 },
                 _=>{
 
                 }
             }
         }
-        self.builder.build()
+        (self.builder.build(),std::mem::replace(&mut self.errors, vec![]))
     }
 }
 
-fn translate(tokens:Vec<Token>)->Module {
+fn translate(tokens:Vec<Token>)->(Module,Vec<TranslatorError>){
     let mut translator = Translator::default();
     translator.translate(tokens)
 }
@@ -132,20 +149,23 @@ mod test {
 
     use module::ModuleBuilder;
 
-    use crate::translate::{translate, Module, Token};
+    use crate::{lex::SourcePosition, translate::{translate, Module, Token, TranslatorError}};
 
-    fn test_case(tokens:Vec<Token>,module:Module){
-        assert_eq!(translate(tokens),module);
+    fn module_test_case(tokens:Vec<Token>,module:Module){
+        assert_eq!(translate(tokens).0,module);
+    }
+    fn error_test_case(tokens:Vec<Token>,errors:Vec<TranslatorError>){
+        assert_eq!(translate(tokens).1,errors);
     }
 
     #[test]
     fn no_tokens(){
-        test_case(vec![], Module::default())
+        module_test_case(vec![], Module::default())
     }
 
     #[test]
     fn ignores_spaces(){
-        test_case(vec![
+        module_test_case(vec![
             token!(Space,"   ",0,0),
             token!(EndLine,"\n",0,3),
             token!(Space,"    ",1,0)
@@ -156,7 +176,7 @@ mod test {
     fn single_charge(){
         let mut module = ModuleBuilder::default();
         module.charge(0, 1);
-        test_case(vec![
+        module_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Charge,">",0,1),
             token!(Identifier,"b",0,2)
@@ -167,7 +187,7 @@ mod test {
     fn single_charge_with_space(){
         let mut module = ModuleBuilder::default();
         module.charge(0, 1);
-        test_case(vec![
+        module_test_case(vec![
             token!(Space,"    ",0,0),
             token!(Identifier,"a",0,4),
             token!(Space,"   ",0,5),
@@ -182,7 +202,7 @@ mod test {
     fn single_charge_same_node(){
         let mut module = ModuleBuilder::default();
         module.charge(0, 0);
-        test_case(vec![
+        module_test_case(vec![
             token!(Space,"    ",0,0),
             token!(Identifier,"a",0,4),
             token!(Space,"   ",0,5),
@@ -199,7 +219,7 @@ mod test {
         let mut module = ModuleBuilder::default();
         module.block(0, 1);
         module.charge(1, 2);
-        test_case(vec![
+        module_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Space,"   ",0,1),
             token!(Block,".",0,4),
@@ -215,7 +235,7 @@ mod test {
         let mut module = ModuleBuilder::default();
         module.block(0, 1);
         module.charge(1, 0);
-        test_case(vec![
+        module_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Space,"   ",0,1),
             token!(Block,".",0,4),
@@ -233,7 +253,7 @@ mod test {
         module.block(0, 1);
         module.charge(1, 2);
         module.charge(0, 3);
-        test_case(vec![
+        module_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Space,"   ",0,1),
             token!(Block,".",0,4),
@@ -248,5 +268,48 @@ mod test {
             token!(Identifier,"d",0,14),
             token!(Semicolon,";",0,15),
         ], module.build())
+    }
+
+    #[test]
+    fn passes_on_sequential_identifiers(){
+        let mut module = ModuleBuilder::default();
+        module.block(0, 1);
+        module.charge(0, 0);
+        module_test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(Space,"   ",0,1),
+            token!(Block,".",0,4),
+            token!(Space,"  ",0,5),
+            token!(Identifier,"b",0,7),
+            token!(Semicolon,";",0,8),
+            token!(Identifier,"c",0,9),
+            token!(Space,"  ",0,10),
+            token!(Identifier,"a",0,12),
+            token!(Semicolon,";",0,13),
+            token!(Identifier,"a",0,14),
+            token!(Charge,">",0,15),
+            token!(Identifier,"a",0,16),
+        ], module.build())
+    }
+
+    #[test]
+    fn error_on_sequential_identifiers(){
+        error_test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(Space,"   ",0,1),
+            token!(Block,".",0,4),
+            token!(Space,"  ",0,5),
+            token!(Identifier,"b",0,7),
+            token!(Semicolon,";",0,8),
+            token!(Identifier,"c",0,9),
+            token!(Space,"  ",0,10),
+            token!(Identifier,"a",0,12),
+            token!(Semicolon,";",0,13),
+            token!(Identifier,"a",0,14),
+            token!(Charge,">",0,15),
+            token!(Identifier,"a",0,16),
+        ], vec![
+            TranslatorError::unexpected_token(SourcePosition::new(0,12))
+        ])
     }
 }
