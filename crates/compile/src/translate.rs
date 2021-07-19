@@ -6,7 +6,7 @@ use crate::lex::{SourcePosition, Token, TokenKind};
 struct Translator {
     state:TranslatorState,
     indexer:Indexer,
-    builder:ModuleBuilder,
+    connections:Vec<Connection>,
     once:String,
     is_charge:bool,
     is_port:bool,
@@ -32,7 +32,30 @@ enum TranslatorState {
 
 #[derive(Default)]
 struct Indexer{
-    map:HashMap<String,(usize,bool)>
+    map:HashMap<String,usize>
+}
+
+struct Connection {
+    from: Identifier,
+    to: Identifier,
+    is_charge:bool
+}
+
+impl Connection {
+    fn new(from: Identifier, to: Identifier, is_charge: bool) -> Connection {
+        Connection { from, to, is_charge }
+    }
+}
+
+struct Identifier {
+    name:String,
+    is_port:bool,
+}
+
+impl Identifier {
+    fn new(name:String,is_port:bool)->Identifier{
+        Identifier{name,is_port}
+    }
 }
 
 fn translate(tokens:Vec<Token>)->(Module,Vec<TranslatorError>){
@@ -43,6 +66,27 @@ fn translate(tokens:Vec<Token>)->(Module,Vec<TranslatorError>){
 impl Translator {
 
     fn translate(&mut self,tokens:Vec<Token>)->(Module,Vec<TranslatorError>) {
+        self.extract_tuples(tokens);
+        (self.build(),std::mem::replace(&mut self.errors, vec![]))
+    }
+
+    fn build(&mut self)->Module {
+        let mut builder = ModuleBuilder::default();
+        for con in self.connections.iter() {
+            let from = self.indexer.index(con.from.name.clone());
+            let to = self.indexer.index(con.to.name.clone());
+            builder.connect(from, to, con.is_charge);
+            if con.from.is_port {
+                builder.input(from);
+            }
+            if con.to.is_port {
+                builder.input(to);
+            }
+        }
+        builder.build()
+    }
+
+    fn extract_tuples(&mut self,tokens:Vec<Token>) {
         for token in tokens.iter() {
             if  self.state == TranslatorState::Error && 
                 token.kind() != TokenKind::Semicolon && 
@@ -54,7 +98,7 @@ impl Translator {
 
             self.handle_token(token);
         }
-        self.finalize()
+        self.finalize();
     }
     fn handle_token(&mut self,token:&Token){
         
@@ -69,7 +113,7 @@ impl Translator {
                 self.handle_semicolon(token);
             },
             TokenKind::EndLine=>{
-                self.handle_endline(token);
+                self.handle_endline();
             },
             TokenKind::Port=>{
                 self.handle_port(token);
@@ -79,11 +123,10 @@ impl Translator {
             }
         }
     }
-    fn finalize(&mut self)->(Module,Vec<TranslatorError>) {
+    fn finalize(&mut self) {
         if self.state == TranslatorState::Operator || self.state == TranslatorState::Identifier {
             self.unexpected_end();
         }
-        (self.builder.build(),std::mem::replace(&mut self.errors, vec![]))
     }
     fn handle_ident(&mut self,token:&Token){
         match self.state {
@@ -169,7 +212,7 @@ impl Translator {
             }
         }
     }
-    fn handle_endline(&mut self,token:&Token){
+    fn handle_endline(&mut self){
         match self.state {
             TranslatorState::Terminate | TranslatorState::Error => {
                 self.once = String::new();
@@ -181,14 +224,9 @@ impl Translator {
         }
     }
     fn connect(&mut self,token_text:&str,port:bool){
-        let from = self.indexer.index(self.once.clone(),self.is_port,&mut self.builder);
-        let to = self.indexer.index(token_text.to_owned(),port,&mut self.builder);
-        if self.is_charge {
-            self.builder.charge(from,to);
-        }
-        else {
-            self.builder.block(from,to);
-        }
+        let from = Identifier::new(self.once.clone(),self.is_port);
+        let to = Identifier::new(token_text.to_owned(),port);
+        self.connections.push(Connection::new(from, to, self.is_charge));
     }
     fn unexpected_error(&mut self,token:&Token){
         self.errors.push(TranslatorError::unexpected_token(token.position()))
@@ -205,14 +243,11 @@ impl Default for TranslatorState {
 }
 
 impl Indexer {
-    fn index(&mut self,ident:String,port:bool,builder:&mut ModuleBuilder)->usize {
+    fn index(&mut self,ident:String)->usize {
         match self.map.get(&ident) {
-            Some(index)=> index.0,
+            Some(index)=> *index,
             None=>{
-                if port {
-                    builder.input(self.map.len());
-                }
-                self.map.insert(ident, (self.map.len(),port));
+                self.map.insert(ident, self.map.len());
                 self.map.len()-1
             }
         }
@@ -223,10 +258,7 @@ impl Indexer {
 #[cfg(test)]
 mod test {
 
-    use std::collections::vec_deque;
-
     use module::ModuleBuilder;
-
     use crate::{lex::SourcePosition, translate::{translate, Module, Token, TranslatorError}};
 
     fn module_test_case(tokens:Vec<Token>,module:Module){

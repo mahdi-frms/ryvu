@@ -30,6 +30,15 @@ impl ModuleBuilder {
         self.expand(std::cmp::max(from,to)+1);
         self.module.connections[from].blocking.push(to);
     }
+    pub fn connect(&mut self,from:usize,to:usize,is_charge:bool) {
+        self.expand(std::cmp::max(from,to)+1);
+        if is_charge {
+            self.module.connections[from].charging.push(to);
+        }
+        else{
+            self.module.connections[from].blocking.push(to);
+        }
+    }
     pub fn input(&mut self,index:usize) -> usize {
         self.expand(index+1);
         self.module.inputs.push(index);
