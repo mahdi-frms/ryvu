@@ -9,6 +9,7 @@ struct Translator {
     builder:ModuleBuilder,
     once:String,
     is_charge:bool,
+    is_port:bool,
     errors:Vec<TranslatorError>
 }
 
@@ -23,13 +24,15 @@ enum TranslatorState {
     Statement,
     Operator,
     Identifier,
+    PortIdent,
+    PortStmt,
     Terminate,
     Error
 }
 
 #[derive(Default)]
 struct Indexer{
-    map:HashMap<String,usize>
+    map:HashMap<String,(usize,bool)>
 }
 
 fn translate(tokens:Vec<Token>)->(Module,Vec<TranslatorError>){
@@ -68,6 +71,9 @@ impl Translator {
             TokenKind::EndLine=>{
                 self.handle_endline(token);
             },
+            TokenKind::Port=>{
+                self.handle_port(token);
+            },
             _=>{
 
             }
@@ -84,10 +90,23 @@ impl Translator {
             TranslatorState::Statement => {
                 self.once = token.text().to_owned();
                 self.state = TranslatorState::Operator;
+                self.is_port = false;
+            },
+            TranslatorState::PortStmt => {
+                self.once = token.text().to_owned();
+                self.state = TranslatorState::Operator;
+                self.is_port = true;
             },
             TranslatorState::Identifier => {
-                self.connect(token.text());
+                self.connect(token.text(),false);
                 self.once = token.text().to_owned();
+                self.is_port = false;
+                self.state = TranslatorState::Terminate;
+            },
+            TranslatorState::PortIdent => {
+                self.connect(token.text(),true);
+                self.once = token.text().to_owned();
+                self.is_port = true;
                 self.state = TranslatorState::Terminate;
             },
             _ =>{
@@ -125,6 +144,20 @@ impl Translator {
             }
         }
     }
+    fn handle_port(&mut self,token:&Token){
+        match self.state {
+            TranslatorState::Identifier => {
+                self.state = TranslatorState::PortIdent;
+            },
+            TranslatorState::Statement => {
+                self.state = TranslatorState::PortStmt;
+            }
+            _ =>{
+                self.unexpected_error(token);
+                self.state = TranslatorState::Error;
+            }
+        }
+    }
     fn handle_endline(&mut self,token:&Token){
         match self.state {
             TranslatorState::Terminate | TranslatorState::Error => {
@@ -136,18 +169,14 @@ impl Translator {
             }
         }
     }
-    fn connect(&mut self,token_text:&str){
+    fn connect(&mut self,token_text:&str,port:bool){
+        let from = self.indexer.index(self.once.clone(),self.is_port,&mut self.builder);
+        let to = self.indexer.index(token_text.to_owned(),port,&mut self.builder);
         if self.is_charge {
-            self.builder.charge(
-                self.indexer.index(self.once.clone()),
-                self.indexer.index(token_text.to_owned())
-            );
+            self.builder.charge(from,to);
         }
         else {
-            self.builder.block(
-                self.indexer.index(self.once.clone()),
-                self.indexer.index(token_text.to_owned())
-            );
+            self.builder.block(from,to);
         }
     }
     fn unexpected_error(&mut self,token:&Token){
@@ -165,11 +194,14 @@ impl Default for TranslatorState {
 }
 
 impl Indexer {
-    fn index(&mut self,ident:String)->usize {
+    fn index(&mut self,ident:String,port:bool,builder:&mut ModuleBuilder)->usize {
         match self.map.get(&ident) {
-            Some(index)=> *index,
+            Some(index)=> index.0,
             None=>{
-                self.map.insert(ident, self.map.len());
+                if port {
+                    builder.input(self.map.len());
+                }
+                self.map.insert(ident, (self.map.len(),port));
                 self.map.len()-1
             }
         }
@@ -185,7 +217,8 @@ mod test {
     use crate::{lex::SourcePosition, translate::{translate, Module, Token, TranslatorError}};
 
     fn module_test_case(tokens:Vec<Token>,module:Module){
-        assert_eq!(translate(tokens).0,module);
+        let compiled_module = translate(tokens).0;
+        assert_eq!(compiled_module,module);
     }
     fn error_test_case(tokens:Vec<Token>,errors:Vec<TranslatorError>){
         assert_eq!(translate(tokens).1,errors);
@@ -400,5 +433,19 @@ mod test {
         ], vec![
             TranslatorError::unexpected_end
         ])
+    }
+
+    #[test]
+    fn input_ports(){
+        let mut module = ModuleBuilder::default();
+        module.charge(0, 1);
+        module.input(0);
+        module_test_case(vec![
+            token!(Port,"$",0,0),
+            token!(Identifier,"a",0,1),
+            token!(Charge,">",0,2),
+            token!(Space,"  ",0,3),
+            token!(Identifier,"b",0,5)
+        ], module.build())
     }
 }
