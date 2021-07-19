@@ -14,7 +14,8 @@ struct Translator {
 
 #[derive(Debug,PartialEq, Eq)]
 enum TranslatorError {
-    unexpected_token(SourcePosition)
+    unexpected_token(SourcePosition),
+    unexpected_end
 }
 
 #[derive(PartialEq, Eq)]
@@ -53,6 +54,9 @@ impl Translator {
 
     fn unexpected_error(&mut self,token:&Token){
         self.errors.push(TranslatorError::unexpected_token(token.position()))
+    }
+    fn unexpected_end(&mut self){
+        self.errors.push(TranslatorError::unexpected_end);
     }
 
     fn handle_ident(&mut self,token:&Token){
@@ -153,7 +157,9 @@ impl Translator {
                 }
             }
         }
-        // FIXME: final checks!
+        if self.state == TranslatorState::Operator || self.state == TranslatorState::Identifier {
+            self.unexpected_end();
+        }
         (self.builder.build(),std::mem::replace(&mut self.errors, vec![]))
     }
 }
@@ -376,5 +382,15 @@ mod test {
             token!(Charge,">",1,1),
             token!(Identifier,"c",1,2),
         ], module.build())
+    }
+
+    #[test]
+    fn error_on_unexpected_end(){
+        error_test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(Block,".",0,1)
+        ], vec![
+            TranslatorError::unexpected_end
+        ])
     }
 }
