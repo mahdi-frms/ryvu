@@ -27,38 +27,58 @@ enum TranslatorState {
     Error
 }
 
-impl Default for TranslatorState {
-    fn default() -> Self {
-        TranslatorState::Statement
-    }
-}
-
 #[derive(Default)]
 struct Indexer{
     map:HashMap<String,usize>
 }
 
-impl Indexer {
-    fn index(&mut self,ident:String)->usize {
-        match self.map.get(&ident) {
-            Some(index)=> *index,
-            None=>{
-                self.map.insert(ident, self.map.len());
-                self.map.len()-1
-            }
-        }
-    }
+fn translate(tokens:Vec<Token>)->(Module,Vec<TranslatorError>){
+    let mut translator = Translator::default();
+    translator.translate(tokens)
 }
 
 impl Translator {
 
-    fn unexpected_error(&mut self,token:&Token){
-        self.errors.push(TranslatorError::unexpected_token(token.position()))
-    }
-    fn unexpected_end(&mut self){
-        self.errors.push(TranslatorError::unexpected_end);
-    }
+    fn translate(&mut self,tokens:Vec<Token>)->(Module,Vec<TranslatorError>) {
+        for token in tokens.iter() {
+            if  self.state == TranslatorState::Error && 
+                token.kind() != TokenKind::Semicolon && 
+                token.kind() != TokenKind::EndLine 
+            
+            {
+                continue;
+            }
 
+            self.handle_token(token);
+        }
+        self.finalize()
+    }
+    fn handle_token(&mut self,token:&Token){
+        
+        match token.kind() {
+            TokenKind::Identifier=>{
+                self.handle_ident(token);
+            },
+            TokenKind::Charge | TokenKind::Block=>{
+                self.handle_operator(token);
+            },
+            TokenKind::Semicolon=>{
+                self.handle_semicolon(token);
+            },
+            TokenKind::EndLine=>{
+                self.handle_endline(token);
+            },
+            _=>{
+
+            }
+        }
+    }
+    fn finalize(&mut self)->(Module,Vec<TranslatorError>) {
+        if self.state == TranslatorState::Operator || self.state == TranslatorState::Identifier {
+            self.unexpected_end();
+        }
+        (self.builder.build(),std::mem::replace(&mut self.errors, vec![]))
+    }
     fn handle_ident(&mut self,token:&Token){
         match self.state {
             TranslatorState::Statement => {
@@ -74,20 +94,6 @@ impl Translator {
                 self.unexpected_error(token);
                 self.state = TranslatorState::Error;
             }
-        }
-    }
-    fn connect(&mut self,token_text:&str){
-        if self.is_charge {
-            self.builder.charge(
-                self.indexer.index(self.once.clone()),
-                self.indexer.index(token_text.to_owned())
-            );
-        }
-        else {
-            self.builder.block(
-                self.indexer.index(self.once.clone()),
-                self.indexer.index(token_text.to_owned())
-            );
         }
     }
     fn handle_semicolon(&mut self,token:&Token){
@@ -130,44 +136,46 @@ impl Translator {
             }
         }
     }
-    fn translate(&mut self,tokens:Vec<Token>)->(Module,Vec<TranslatorError>){
-        for token in tokens.iter() {
-            if  self.state == TranslatorState::Error && 
-                token.kind() != TokenKind::Semicolon && 
-                token.kind() != TokenKind::EndLine 
-            
-            {
-                continue;
-            }
-            match token.kind() {
-                TokenKind::Identifier=>{
-                    self.handle_ident(token);
-                },
-                TokenKind::Charge | TokenKind::Block=>{
-                    self.handle_operator(token);
-                },
-                TokenKind::Semicolon=>{
-                    self.handle_semicolon(token);
-                },
-                TokenKind::EndLine=>{
-                    self.handle_endline(token);
-                },
-                _=>{
-
-                }
-            }
+    fn connect(&mut self,token_text:&str){
+        if self.is_charge {
+            self.builder.charge(
+                self.indexer.index(self.once.clone()),
+                self.indexer.index(token_text.to_owned())
+            );
         }
-        if self.state == TranslatorState::Operator || self.state == TranslatorState::Identifier {
-            self.unexpected_end();
+        else {
+            self.builder.block(
+                self.indexer.index(self.once.clone()),
+                self.indexer.index(token_text.to_owned())
+            );
         }
-        (self.builder.build(),std::mem::replace(&mut self.errors, vec![]))
+    }
+    fn unexpected_error(&mut self,token:&Token){
+        self.errors.push(TranslatorError::unexpected_token(token.position()))
+    }
+    fn unexpected_end(&mut self){
+        self.errors.push(TranslatorError::unexpected_end);
     }
 }
 
-fn translate(tokens:Vec<Token>)->(Module,Vec<TranslatorError>){
-    let mut translator = Translator::default();
-    translator.translate(tokens)
+impl Default for TranslatorState {
+    fn default() -> Self {
+        TranslatorState::Statement
+    }
 }
+
+impl Indexer {
+    fn index(&mut self,ident:String)->usize {
+        match self.map.get(&ident) {
+            Some(index)=> *index,
+            None=>{
+                self.map.insert(ident, self.map.len());
+                self.map.len()-1
+            }
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod test {
