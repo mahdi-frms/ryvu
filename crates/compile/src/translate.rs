@@ -74,8 +74,8 @@ impl Translator {
             TokenKind::Port=>{
                 self.handle_port(token);
             },
-            _=>{
-
+            TokenKind::Space=>{
+                self.handle_space(token);
             }
         }
     }
@@ -112,6 +112,17 @@ impl Translator {
             _ =>{
                 self.unexpected_error(token);
                 self.state = TranslatorState::Error;
+            }
+        }
+    }
+    fn handle_space(&mut self,token:&Token){
+        match self.state  {
+            TranslatorState::PortIdent | TranslatorState::PortStmt => {
+                self.unexpected_error(token);
+                self.state = TranslatorState::Error;
+            }
+            _=>{
+                // nothing
             }
         }
     }
@@ -165,7 +176,7 @@ impl Translator {
                 self.state = TranslatorState::Statement;
             },
             _ => {
-                // nothing    
+                // nothing
             }
         }
     }
@@ -211,6 +222,8 @@ impl Indexer {
 
 #[cfg(test)]
 mod test {
+
+    use std::collections::vec_deque;
 
     use module::ModuleBuilder;
 
@@ -447,5 +460,18 @@ mod test {
             token!(Space,"  ",0,3),
             token!(Identifier,"b",0,5)
         ], module.build())
+    }
+    #[test]
+    fn error_port_notfollewedby_ident(){
+        error_test_case(vec![
+            token!(Port,"$",0,0),
+            token!(Space," ",0,1),
+            token!(Identifier,"a",0,2),
+            token!(Charge,">",0,3),
+            token!(Space,"  ",0,4),
+            token!(Identifier,"b",0,6)
+        ], vec![
+            TranslatorError::unexpected_token(SourcePosition::new(0,1))
+        ])
     }
 }
