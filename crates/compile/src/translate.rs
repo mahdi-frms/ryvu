@@ -115,9 +115,24 @@ impl Translator {
             }
         }
     }
+    fn handle_endline(&mut self,token:&Token){
+        match self.state {
+            TranslatorState::Terminate | TranslatorState::Error => {
+                self.once = String::new();
+                self.state = TranslatorState::Statement;
+            },
+            _ => {
+                // nothing    
+            }
+        }
+    }
     fn translate(&mut self,tokens:Vec<Token>)->(Module,Vec<TranslatorError>){
         for token in tokens.iter() {
-            if self.state == TranslatorState::Error && token.kind() != TokenKind::Semicolon {
+            if  self.state == TranslatorState::Error && 
+                token.kind() != TokenKind::Semicolon && 
+                token.kind() != TokenKind::EndLine 
+            
+            {
                 continue;
             }
             match token.kind() {
@@ -130,11 +145,15 @@ impl Translator {
                 TokenKind::Semicolon=>{
                     self.handle_semicolon(token);
                 },
+                TokenKind::EndLine=>{
+                    self.handle_endline(token);
+                },
                 _=>{
 
                 }
             }
         }
+        // FIXME: final checks!
         (self.builder.build(),std::mem::replace(&mut self.errors, vec![]))
     }
 }
@@ -311,5 +330,51 @@ mod test {
         ], vec![
             TranslatorError::unexpected_token(SourcePosition::new(0,12))
         ])
+    }
+
+    #[test]
+    fn ignores_endline_in_statements(){
+        let mut module = ModuleBuilder::default();
+        module.block(0, 1);
+        module_test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(EndLine,"\n",0,1),
+            token!(Block,".",0,2),
+            token!(EndLine,"\n",0,3),
+            token!(Identifier,"b",0,4)
+        ], module.build())
+    }
+
+    #[test]
+    fn endline_terminates_statement(){
+        let mut module = ModuleBuilder::default();
+        module.block(0, 1);
+        module.charge(0, 2);
+        module_test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(EndLine,"\n",0,1),
+            token!(Block,".",0,2),
+            token!(EndLine,"\n",0,3),
+            token!(Identifier,"b",0,4),
+            token!(EndLine,"\n",0,5),
+            token!(Identifier,"a",1,0),
+            token!(Charge,">",1,1),
+            token!(Identifier,"c",1,2),
+        ], module.build())
+    }
+
+    #[test]
+    fn endline_recovers_after_error(){
+        let mut module = ModuleBuilder::default();
+        module.charge(0, 1);
+        module_test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(Block,".",0,1),
+            token!(Block,".",0,2),
+            token!(EndLine,"\n",0,3),
+            token!(Identifier,"a",1,0),
+            token!(Charge,">",1,1),
+            token!(Identifier,"c",1,2),
+        ], module.build())
     }
 }
