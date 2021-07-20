@@ -251,7 +251,7 @@ impl Default for ParserState {
 
 #[cfg(test)]
 mod test {
-    use crate::{lex::{SourcePosition,Token}, translate::Connection, parse::{parse,ParserError}};
+    use crate::{lex::{SourcePosition,Token}, translate::{Connection,IdentKind}, parse::{parse,ParserError}};
 
     fn parser_test_case(tokens:Vec<Token>,connections:Vec<Connection>){
         let generated_connections = parse(tokens,vec![]).0;
@@ -508,6 +508,34 @@ mod test {
             token!(Identifier,"b",0,3)
         ], vec![
             connection!(a > !b)
+        ])
+    }
+
+
+    #[test]
+    fn error_inconsistant_ident_type(){
+        parse_error_test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(Charge,">",0,1),
+            token!(Port,"$",0,2),
+            token!(Identifier,"b",0,3),
+            token!(Semicolon,";",0,4),
+
+            token!(Port,"$",0,5),
+            token!(Identifier,"b",0,6),
+            token!(Charge,">",0,7),
+            token!(Port,"$",0,8),
+            token!(Identifier,"a",0,9),
+            token!(Semicolon,";",0,10),
+
+            token!(Port,"$",0,11),
+            token!(Identifier,"a",0,12),
+            token!(Charge,">",0,13),
+            token!(Identifier,"c",0,14),
+        ], vec![
+            ParserError::InconstIdKind("b".to_owned(),IdentKind::InPort,IdentKind::OutPort),
+            ParserError::InconstIdKind("a".to_owned(),IdentKind::OutPort,IdentKind::Node),
+            ParserError::InconstIdKind("a".to_owned(),IdentKind::InPort,IdentKind::Node)
         ])
     }
 }
