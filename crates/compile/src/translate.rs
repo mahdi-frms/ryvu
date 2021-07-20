@@ -1,16 +1,10 @@
 use std::collections::HashMap;
 use module::{Module, ModuleBuilder};
 
-type IndexMap = HashMap<String,(usize,IdentKind)>;
-
-#[derive(Debug,PartialEq, Eq)]
-enum TranslatorError {
-    InconstIdent(String,IdentKind,IdentKind)
-}
+type IndexMap = HashMap<String,usize>;
 
 #[derive(Default)]
 struct Translator {
-    errors:Vec<TranslatorError>,
     indexes:IndexMap
 }
 
@@ -32,13 +26,6 @@ pub enum IdentKind {
     Node,
     InPort,
     OutPort
-}
-
-#[derive(PartialEq, Eq)]
-enum PortIndexResult {
-    Error,
-    Normal,
-    NewPort
 }
 
 macro_rules! connection {
@@ -92,61 +79,40 @@ macro_rules! connection {
     };
 }
 
-fn translate(connections:Vec<Connection>,errors:Vec<TranslatorError>)->(Module,Vec<TranslatorError>) {
-    Translator::default().translate(connections, errors)
+fn translate(connections:Vec<Connection>)->Module {
+    Translator::default().translate(connections)
 }
 
 impl Translator {
 
-    fn translate(&mut self,connections:Vec<Connection>,errors:Vec<TranslatorError>)->(Module,Vec<TranslatorError>) {
-        self.errors = errors;
+    fn translate(&mut self,connections:Vec<Connection>)->Module {
         let mut builder = ModuleBuilder::default();
         for con in connections.iter() {
 
-            let from = self.index(&con.from);
-            let to = self.index(&con.to);
+            let (from_idx,from_new) = self.index(&con.from);
+            let (to_idx,to_new) = self.index(&con.to);
 
-            if from.1 != PortIndexResult::Error && to.1 != PortIndexResult::Error {
-                builder.connect(from.0, to.0, con.is_charge);
-                if from.1 == PortIndexResult::NewPort {
-                    builder.input(from.0);
-                }
-                if to.1 == PortIndexResult::NewPort {
-                    builder.output(to.0);
-                }
+            builder.connect(from_idx, to_idx, con.is_charge);
+            if from_new && con.from.kind == IdentKind::InPort {
+                builder.input(from_idx);
+            }
+            if to_new && con.to.kind == IdentKind::OutPort{
+                builder.output(to_idx);
             }
         }
-        (
-            builder.build(),
-            std::mem::replace(&mut self.errors, vec![])
-        )
+        builder.build()
     }
 
-    fn index(&mut self,ident:&Identifier)->(usize,PortIndexResult) {
+    fn index(&mut self,ident:&Identifier)->(usize,bool) {
         match self.indexes.get(&ident.name).copied() {
-            Some((index,orig_kind))=> {
-                if orig_kind == ident.kind {
-                    (index,PortIndexResult::Normal)
-                }
-                else{  
-                    self.inconst_ident(ident,orig_kind);
-                    (index,PortIndexResult::Error)
-                }
+            Some(index)=> {
+                (index,false)
             },
             None=>{
-                self.indexes.insert(ident.name.clone(), (self.indexes.len(),ident.kind));
-                (self.indexes.len()-1,if ident.kind != IdentKind::Node {
-                    PortIndexResult::NewPort
-                }
-                else{
-                    PortIndexResult::Normal
-                })
+                self.indexes.insert(ident.name.clone(), self.indexes.len());
+                (self.indexes.len()-1,true)
             }
         }
-    }
-
-    fn inconst_ident(&mut self,ident:&Identifier,orig_kind:IdentKind){
-        self.errors.push(TranslatorError::InconstIdent(ident.name.clone(),ident.kind,orig_kind));
     }
 }
 
@@ -166,16 +132,11 @@ impl Identifier {
 mod test {
 
     use module::ModuleBuilder;
-    use crate::translate::{Connection, IdentKind, Module, TranslatorError, translate};
+    use crate::translate::{Connection, Module, translate};
 
     fn translate_test_case(connections:Vec<Connection>,module:Module){
-        let compiled_module = translate(connections,vec![]).0;
+        let compiled_module = translate(connections);
         assert_eq!(compiled_module,module);
-    }
-
-    fn translate_error_test_case(connections:Vec<Connection>,errors:Vec<TranslatorError>){
-        let generated_errors = translate(connections,vec![]).1;
-        assert_eq!(generated_errors,errors);
     }
 
     #[test]
@@ -250,35 +211,5 @@ mod test {
             connection!(a > !b),
             connection!(c > !b)
         ], builder.build())
-    }
-
-    #[test]
-    fn error_on_node_inport_inconsistency(){
-        translate_error_test_case(vec![
-            connection!(!a > b),
-            connection!(a > c)
-        ], vec![
-            TranslatorError::InconstIdent(String::from("a"),IdentKind::Node,IdentKind::InPort)
-        ])
-    }
-
-    #[test]
-    fn error_on_node_output_inconsistency(){
-        translate_error_test_case(vec![
-            connection!(a > !b),
-            connection!(c > b)
-        ], vec![
-            TranslatorError::InconstIdent(String::from("b"),IdentKind::Node,IdentKind::OutPort)
-        ])
-    }
-
-    #[test]
-    fn error_on_input_output_inconsistency(){
-        translate_error_test_case(vec![
-            connection!(a > !b),
-            connection!(!b > c)
-        ], vec![
-            TranslatorError::InconstIdent(String::from("b"),IdentKind::InPort,IdentKind::OutPort)
-        ])
     }
 }
