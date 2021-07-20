@@ -13,10 +13,18 @@ struct Translator {
     errors:Vec<TranslatorError>
 }
 
+#[derive(Debug,PartialEq,Eq,Clone, Copy)]
+enum IdentKind {
+    Node,
+    InPort,
+    OutPort
+}
+
 #[derive(Debug,PartialEq, Eq)]
 enum TranslatorError {
-    unexpected_token(SourcePosition),
-    unexpected_end
+    UnexpectedToken(SourcePosition),
+    UnexpectedEnd,
+    InconstIdent(String,IdentKind,IdentKind)
 }
 
 #[derive(PartialEq, Eq)]
@@ -32,7 +40,7 @@ enum TranslatorState {
 
 #[derive(Default)]
 struct Indexer{
-    map:HashMap<String,usize>
+    map:HashMap<String,(usize,IdentKind)>
 }
 
 struct Connection {
@@ -73,14 +81,41 @@ impl Translator {
     fn build(&mut self)->Module {
         let mut builder = ModuleBuilder::default();
         for con in self.connections.iter() {
-            let from = self.indexer.index(con.from.name.clone());
-            let to = self.indexer.index(con.to.name.clone());
-            builder.connect(from, to, con.is_charge);
-            if con.from.is_port {
-                builder.input(from);
+
+            let from_kind = if con.from.is_port {
+                IdentKind::InPort
             }
-            if con.to.is_port {
-                builder.input(to);
+            else{
+                IdentKind::Node
+            };
+            let from = self.indexer.index(con.from.name.clone(),from_kind);
+
+            let to_kind = if con.to.is_port {
+                IdentKind::OutPort
+            }
+            else{
+                IdentKind::Node
+            };
+            let to = self.indexer.index(con.to.name.clone(),to_kind);
+
+            let mut flag = false;
+            if let Some(kind) = from.1 {
+                flag = true;
+                self.errors.push(TranslatorError::InconstIdent(con.from.name.clone(),kind,from_kind));
+            }
+            if let Some(kind) = to.1 {
+                flag = true;
+                self.errors.push(TranslatorError::InconstIdent(con.to.name.clone(),kind,to_kind));
+            }
+
+            if !flag {
+                builder.connect(from.0, to.0, con.is_charge);
+                if from.2 && from_kind == IdentKind::InPort {
+                    builder.input(from.0);
+                }
+                if to.2 && to_kind == IdentKind::OutPort {
+                    builder.output(to.0);
+                }
             }
         }
         builder.build()
@@ -229,10 +264,10 @@ impl Translator {
         self.connections.push(Connection::new(from, to, self.is_charge));
     }
     fn unexpected_error(&mut self,token:&Token){
-        self.errors.push(TranslatorError::unexpected_token(token.position()))
+        self.errors.push(TranslatorError::UnexpectedToken(token.position()))
     }
     fn unexpected_end(&mut self){
-        self.errors.push(TranslatorError::unexpected_end);
+        self.errors.push(TranslatorError::UnexpectedEnd);
     }
 }
 
@@ -243,12 +278,19 @@ impl Default for TranslatorState {
 }
 
 impl Indexer {
-    fn index(&mut self,ident:String)->usize {
+    fn index(&mut self,ident:String,kind:IdentKind)->(usize,Option<IdentKind>,bool) {
         match self.map.get(&ident) {
-            Some(index)=> *index,
+            Some(index)=> {
+                if index.1 == kind {
+                    (index.0,None,false)
+                }
+                else{
+                    (index.0,Some(index.1),false)
+                }
+            },
             None=>{
-                self.map.insert(ident, self.map.len());
-                self.map.len()-1
+                self.map.insert(ident, (self.map.len(),kind));
+                (self.map.len()-1,None,true)
             }
         }
     }
@@ -259,7 +301,7 @@ impl Indexer {
 mod test {
 
     use module::ModuleBuilder;
-    use crate::{lex::SourcePosition, translate::{translate, Module, Token, TranslatorError}};
+    use crate::{lex::SourcePosition, translate::{IdentKind, Module, Token, TranslatorError, translate}};
 
     fn module_test_case(tokens:Vec<Token>,module:Module){
         let compiled_module = translate(tokens).0;
@@ -420,7 +462,7 @@ mod test {
             token!(Charge,">",0,15),
             token!(Identifier,"a",0,16),
         ], vec![
-            TranslatorError::unexpected_token(SourcePosition::new(0,12))
+            TranslatorError::UnexpectedToken(SourcePosition::new(0,12))
         ])
     }
 
@@ -476,7 +518,7 @@ mod test {
             token!(Identifier,"a",0,0),
             token!(Block,".",0,1)
         ], vec![
-            TranslatorError::unexpected_end
+            TranslatorError::UnexpectedEnd
         ])
     }
 
@@ -503,7 +545,47 @@ mod test {
             token!(Space,"  ",0,4),
             token!(Identifier,"b",0,6)
         ], vec![
-            TranslatorError::unexpected_token(SourcePosition::new(0,1))
+            TranslatorError::UnexpectedToken(SourcePosition::new(0,1))
+        ])
+    }
+
+    #[test]
+    fn output_ports(){
+        let mut module = ModuleBuilder::default();
+        module.charge(0, 1);
+        module.output(1);
+        module_test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(Charge,">",0,1),
+            token!(Port,"$",0,2),
+            token!(Identifier,"b",0,3)
+        ], module.build())
+    }
+
+    #[test]
+    fn error_inconsistant_ident_type(){
+        error_test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(Charge,">",0,1),
+            token!(Port,"$",0,2),
+            token!(Identifier,"b",0,3),
+            token!(Semicolon,";",0,4),
+
+            token!(Port,"$",0,5),
+            token!(Identifier,"b",0,6),
+            token!(Charge,">",0,7),
+            token!(Port,"$",0,8),
+            token!(Identifier,"a",0,9),
+            token!(Semicolon,";",0,10),
+
+            token!(Port,"$",0,11),
+            token!(Identifier,"a",0,12),
+            token!(Charge,">",0,13),
+            token!(Identifier,"c",0,14),
+        ], vec![
+            TranslatorError::InconstIdent("b".to_owned(),IdentKind::OutPort,IdentKind::InPort),
+            TranslatorError::InconstIdent("a".to_owned(),IdentKind::Node,IdentKind::OutPort),
+            TranslatorError::InconstIdent("a".to_owned(),IdentKind::Node,IdentKind::InPort)
         ])
     }
 }
