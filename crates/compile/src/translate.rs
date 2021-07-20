@@ -32,6 +32,12 @@ enum ParserState {
     Error
 }
 
+#[derive(Default)]
+struct Translator {
+    errors:Vec<TranslatorError>,
+    indexes:IndexMap
+}
+
 struct Connection {
     from: Identifier,
     to: Identifier,
@@ -62,12 +68,6 @@ fn translate(tokens:Vec<Token>)->(Module,Vec<TranslatorError>) {
     let (cons,errors) = Parser::default().parse(tokens,errors);
     let (module,errors) = Translator::default().build(cons,errors);
     (module,errors)
-}
-
-#[derive(Default)]
-struct Translator {
-    errors:Vec<TranslatorError>,
-    indexes:IndexMap
 }
 
 impl Translator {
@@ -140,6 +140,7 @@ impl Parser {
         }
         self.finalize()
     }
+
     fn handle_token(&mut self,token:&Token){
         
         match token.kind() {
@@ -163,6 +164,7 @@ impl Parser {
             }
         }
     }
+
     fn finalize(&mut self) -> (Vec<Connection>,Vec<TranslatorError>){
         if self.state == ParserState::Operator || self.state == ParserState::Identifier {
             self.unexpected_end();
@@ -174,6 +176,7 @@ impl Parser {
             std::mem::replace(&mut self.errors, vec![])
         )
     }
+
     fn handle_ident(&mut self,token:&Token){
         match self.state {
             ParserState::Statement => {
@@ -204,6 +207,7 @@ impl Parser {
             }
         }
     }
+
     fn handle_space(&mut self,token:&Token){
         match self.state  {
             ParserState::PortIdent | ParserState::PortStmt => {
@@ -215,6 +219,7 @@ impl Parser {
             }
         }
     }
+
     fn handle_semicolon(&mut self,token:&Token){
         match self.state {
             ParserState::Terminate | ParserState::Error => {
@@ -227,6 +232,7 @@ impl Parser {
             }
         }
     }
+
     fn handle_operator(&mut self,token:&Token){
         match self.state {
             ParserState::Terminate | ParserState::Operator=> {
@@ -244,6 +250,7 @@ impl Parser {
             }
         }
     }
+
     fn handle_port(&mut self,token:&Token){
         match self.state {
             ParserState::Identifier => {
@@ -258,6 +265,7 @@ impl Parser {
             }
         }
     }
+
     fn handle_endline(&mut self){
         match self.state {
             ParserState::Terminate | ParserState::Error => {
@@ -269,6 +277,7 @@ impl Parser {
             }
         }
     }
+
     fn connect(&mut self,token_text:&str,port:bool){
         let from = Identifier::new(self.buffer.clone(),if self.is_port {
             IdentKind::InPort
@@ -284,9 +293,11 @@ impl Parser {
         });
         self.connections.push(Connection::new(from, to, self.is_charge));
     }
+
     fn unexpected_error(&mut self,token:&Token){
         self.errors.push(TranslatorError::UnexpectedToken(token.position()))
     }
+
     fn unexpected_end(&mut self){
         self.errors.push(TranslatorError::UnexpectedEnd);
     }
@@ -297,13 +308,17 @@ impl Default for ParserState {
         ParserState::Statement
     }
 }
+
 impl Connection {
     fn new(from: Identifier, to: Identifier, is_charge: bool) -> Connection {
         Connection { from, to, is_charge }
     }
 }
+
 impl Identifier {
-    fn new(name: String, kind: IdentKind) -> Self { Self { name, kind } }
+    fn new(name: String, kind: IdentKind) -> Identifier {
+        Identifier { name, kind } 
+    }
 }
 
 #[cfg(test)]
@@ -375,7 +390,6 @@ mod test {
         ], module.build())
     }
 
-
     #[test]
     fn chained_statements(){
         let mut module = ModuleBuilder::default();
@@ -407,7 +421,6 @@ mod test {
             token!(Identifier,"a",0,9),
         ], module.build())
     }
-
 
     #[test]
     fn semincolon_statement_seperation(){
@@ -544,6 +557,7 @@ mod test {
             token!(Identifier,"b",0,5)
         ], module.build())
     }
+    
     #[test]
     fn error_port_notfollewedby_ident(){
         error_test_case(vec![
