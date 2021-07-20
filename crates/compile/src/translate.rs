@@ -9,16 +9,20 @@ struct Parser{
     buffer:String,
     is_charge:bool,
     is_port:bool,
-    errors:Vec<TranslatorError>
+    errors:Vec<ParserError>
 }
 
 type IndexMap = HashMap<String,(usize,IdentKind)>;
 
 #[derive(Debug,PartialEq, Eq)]
 enum TranslatorError {
-    UnexpectedToken(SourcePosition),
-    UnexpectedEnd,
     InconstIdent(String,IdentKind,IdentKind)
+}
+
+#[derive(Debug,PartialEq, Eq)]
+enum ParserError {
+    UnexpectedToken(SourcePosition),
+    UnexpectedEnd
 }
 
 #[derive(PartialEq, Eq)]
@@ -65,14 +69,7 @@ enum PortIndexResult {
     NewPort
 }
 
-fn compile(tokens:Vec<Token>)->(Module,Vec<TranslatorError>) {
-    let errors = vec![];
-    let (cons,errors) = parse(tokens,errors);
-    let (module,errors) = translate(cons,errors);
-    (module,errors)
-}
-
-fn parse(tokens:Vec<Token>,errors:Vec<TranslatorError>)->(Vec<Connection>,Vec<TranslatorError>) {
+fn parse(tokens:Vec<Token>,errors:Vec<ParserError>)->(Vec<Connection>,Vec<ParserError>) {
     Parser::default().parse(tokens,errors)
 }
 
@@ -136,7 +133,7 @@ impl Translator {
 
 impl Parser {
 
-    fn parse(&mut self,tokens:Vec<Token>,errors:Vec<TranslatorError>) -> (Vec<Connection>,Vec<TranslatorError>) {
+    fn parse(&mut self,tokens:Vec<Token>,errors:Vec<ParserError>) -> (Vec<Connection>,Vec<ParserError>) {
         for token in tokens.iter() {
             if  self.state == ParserState::Error && 
                 token.kind() != TokenKind::Semicolon && 
@@ -175,7 +172,7 @@ impl Parser {
         }
     }
 
-    fn finalize(&mut self) -> (Vec<Connection>,Vec<TranslatorError>){
+    fn finalize(&mut self) -> (Vec<Connection>,Vec<ParserError>){
         if self.state == ParserState::Operator || self.state == ParserState::Identifier {
             self.unexpected_end();
         }
@@ -305,11 +302,11 @@ impl Parser {
     }
 
     fn unexpected_error(&mut self,token:&Token){
-        self.errors.push(TranslatorError::UnexpectedToken(token.position()))
+        self.errors.push(ParserError::UnexpectedToken(token.position()))
     }
 
     fn unexpected_end(&mut self){
-        self.errors.push(TranslatorError::UnexpectedEnd);
+        self.errors.push(ParserError::UnexpectedEnd);
     }
 }
 
@@ -387,7 +384,7 @@ mod test {
     }
 
     use module::ModuleBuilder;
-    use crate::{lex::SourcePosition, translate::{Connection, IdentKind, Module, Token, TranslatorError, compile, parse, translate}};
+    use crate::{lex::SourcePosition, translate::{ParserError, Connection, IdentKind, Module, Token, TranslatorError, parse, translate}};
 
     fn translate_test_case(connections:Vec<Connection>,module:Module){
         let compiled_module = translate(connections,vec![]).0;
@@ -404,7 +401,7 @@ mod test {
         assert_eq!(generated_connections,connections);
     }
 
-    fn parse_error_test_case(tokens:Vec<Token>,errors:Vec<TranslatorError>){
+    fn parse_error_test_case(tokens:Vec<Token>,errors:Vec<ParserError>){
         let generated_errors = parse(tokens,vec![]).1;
         assert_eq!(generated_errors,errors);
     }
@@ -566,7 +563,7 @@ mod test {
             token!(Charge,">",0,15),
             token!(Identifier,"a",0,16),
         ], vec![
-            TranslatorError::UnexpectedToken(SourcePosition::new(0,12))
+            ParserError::UnexpectedToken(SourcePosition::new(0,12))
         ])
     }
 
@@ -622,7 +619,7 @@ mod test {
             token!(Identifier,"a",0,0),
             token!(Block,".",0,1)
         ], vec![
-            TranslatorError::UnexpectedEnd
+            ParserError::UnexpectedEnd
         ])
     }
 
@@ -652,7 +649,7 @@ mod test {
             token!(Space,"  ",0,4),
             token!(Identifier,"b",0,6)
         ], vec![
-            TranslatorError::UnexpectedToken(SourcePosition::new(0,1))
+            ParserError::UnexpectedToken(SourcePosition::new(0,1))
         ])
     }
 
