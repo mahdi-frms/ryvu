@@ -670,4 +670,108 @@ mod test {
             connection!(a > !b)
         ])
     }
+
+    #[test]
+    fn single_connection(){
+        let mut builder = ModuleBuilder::default();
+        builder.charge(0, 1);
+        translate_test_case(vec![
+            connection!(a > b)
+        ], builder.build())
+    }
+
+    #[test]
+    fn multiple_connection(){
+        let mut builder = ModuleBuilder::default();
+        builder.charge(0, 1);
+        builder.block(0, 2);
+        builder.charge(2, 0);
+        builder.block(1, 3);
+        builder.charge(3, 3);
+        translate_test_case(vec![
+            connection!(a > b),
+            connection!(a . c),
+            connection!(c > a),
+            connection!(b . d),
+            connection!(d > d)
+        ], builder.build())
+    }
+
+    #[test]
+    fn single_input_single_use(){
+        let mut builder = ModuleBuilder::default();
+        builder.charge(0, 1);
+        builder.block(1, 2);
+        builder.input(0);
+        translate_test_case(vec![
+            connection!(!a > b),
+            connection!(b . c),
+        ], builder.build())
+    }
+
+    #[test]
+    fn single_output_single_use(){
+        let mut builder = ModuleBuilder::default();
+        builder.charge(0, 1);
+        builder.block(1, 2);
+        builder.output(2);
+        translate_test_case(vec![
+            connection!(a > b),
+            connection!(b . !c),
+        ], builder.build())
+    }
+
+    #[test]
+    fn single_input_multiple_use(){
+        let mut builder = ModuleBuilder::default();
+        builder.charge(0, 1);
+        builder.charge(0, 2);
+        builder.input(0);
+        translate_test_case(vec![
+            connection!(!a > b),
+            connection!(!a > c)
+        ], builder.build())
+    }
+
+    #[test]
+    fn single_output_multiple_use(){
+        let mut builder = ModuleBuilder::default();
+        builder.charge(0, 1);
+        builder.charge(2, 1);
+        builder.output(1);
+        translate_test_case(vec![
+            connection!(a > !b),
+            connection!(c > !b)
+        ], builder.build())
+    }
+
+    #[test]
+    fn error_on_node_inport_inconsistency(){
+        translate_error_test_case(vec![
+            connection!(!a > b),
+            connection!(a > c)
+        ], vec![
+            TranslatorError::InconstIdent(String::from("a"),IdentKind::Node,IdentKind::InPort)
+        ])
+    }
+
+    #[test]
+    fn error_on_node_output_inconsistency(){
+        translate_error_test_case(vec![
+            connection!(a > !b),
+            connection!(c > b)
+        ], vec![
+            TranslatorError::InconstIdent(String::from("b"),IdentKind::Node,IdentKind::OutPort)
+        ])
+    }
+
+    #[test]
+    fn error_on_input_output_inconsistency(){
+        translate_error_test_case(vec![
+            connection!(a > !b),
+            connection!(!b > c)
+        ], vec![
+            TranslatorError::InconstIdent(String::from("b"),IdentKind::InPort,IdentKind::OutPort)
+        ])
+    }
 }
