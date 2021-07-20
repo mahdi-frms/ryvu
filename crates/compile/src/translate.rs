@@ -3,22 +3,17 @@ use module::{Module, ModuleBuilder};
 use crate::lex::{SourcePosition, Token, TokenKind};
 
 #[derive(Default)]
-struct Translator {
-    state:TranslatorState,
-    indexer:Indexer,
+struct Parser{
+    state:ParserState,
     connections:Vec<Connection>,
-    once:String,
+    buffer:String,
     is_charge:bool,
     is_port:bool,
-    errors:Vec<TranslatorError>
+    errors:Vec<TranslatorError>,
+    indexes:IndexMap
 }
 
-#[derive(Debug,PartialEq,Eq,Clone, Copy)]
-enum IdentKind {
-    Node,
-    InPort,
-    OutPort
-}
+type IndexMap = HashMap<String,(usize,IdentKind)>;
 
 #[derive(Debug,PartialEq, Eq)]
 enum TranslatorError {
@@ -28,7 +23,7 @@ enum TranslatorError {
 }
 
 #[derive(PartialEq, Eq)]
-enum TranslatorState {
+enum ParserState {
     Statement,
     Operator,
     Identifier,
@@ -38,82 +33,58 @@ enum TranslatorState {
     Error
 }
 
-#[derive(Default)]
-struct Indexer{
-    map:HashMap<String,(usize,IdentKind)>
-}
-
 struct Connection {
     from: Identifier,
     to: Identifier,
     is_charge:bool
 }
 
-impl Connection {
-    fn new(from: Identifier, to: Identifier, is_charge: bool) -> Connection {
-        Connection { from, to, is_charge }
-    }
-}
-
 struct Identifier {
     name:String,
-    is_port:bool,
+    kind:IdentKind,
 }
 
-impl Identifier {
-    fn new(name:String,is_port:bool)->Identifier{
-        Identifier{name,is_port}
-    }
+#[derive(Debug,PartialEq,Eq,Clone, Copy)]
+enum IdentKind {
+    Node,
+    InPort,
+    OutPort
+}
+
+#[derive(PartialEq, Eq)]
+enum PortIndexResult {
+    Error,
+    Normal,
+    NewPort
 }
 
 fn translate(tokens:Vec<Token>)->(Module,Vec<TranslatorError>){
-    let mut translator = Translator::default();
+    let mut translator = Parser::default();
     translator.translate(tokens)
 }
 
-impl Translator {
+impl Parser {
 
     fn translate(&mut self,tokens:Vec<Token>)->(Module,Vec<TranslatorError>) {
-        self.extract_tuples(tokens);
-        (self.build(),std::mem::replace(&mut self.errors, vec![]))
+        let cons = self.extract_tuples(tokens);
+        let module = self.build(cons);
+        let errors = std::mem::replace(&mut self.errors, vec![]);
+        (module,errors)
     }
 
-    fn build(&mut self)->Module {
+    fn build(&mut self,connections:Vec<Connection>)->Module {
         let mut builder = ModuleBuilder::default();
-        for con in self.connections.iter() {
+        for con in connections.iter() {
 
-            let from_kind = if con.from.is_port {
-                IdentKind::InPort
-            }
-            else{
-                IdentKind::Node
-            };
-            let from = self.indexer.index(con.from.name.clone(),from_kind);
+            let from = self.index(&con.from);
+            let to = self.index(&con.to);
 
-            let to_kind = if con.to.is_port {
-                IdentKind::OutPort
-            }
-            else{
-                IdentKind::Node
-            };
-            let to = self.indexer.index(con.to.name.clone(),to_kind);
-
-            let mut flag = false;
-            if let Some(kind) = from.1 {
-                flag = true;
-                self.errors.push(TranslatorError::InconstIdent(con.from.name.clone(),kind,from_kind));
-            }
-            if let Some(kind) = to.1 {
-                flag = true;
-                self.errors.push(TranslatorError::InconstIdent(con.to.name.clone(),kind,to_kind));
-            }
-
-            if !flag {
+            if from.1 != PortIndexResult::Error && to.1 != PortIndexResult::Error {
                 builder.connect(from.0, to.0, con.is_charge);
-                if from.2 && from_kind == IdentKind::InPort {
+                if from.1 == PortIndexResult::NewPort {
                     builder.input(from.0);
                 }
-                if to.2 && to_kind == IdentKind::OutPort {
+                if to.1 == PortIndexResult::NewPort {
                     builder.output(to.0);
                 }
             }
@@ -121,9 +92,36 @@ impl Translator {
         builder.build()
     }
 
-    fn extract_tuples(&mut self,tokens:Vec<Token>) {
+    fn index(&mut self,ident:&Identifier)->(usize,PortIndexResult) {
+        match self.indexes.get(&ident.name).copied() {
+            Some((index,orig_kind))=> {
+                if orig_kind == ident.kind {
+                    (index,PortIndexResult::Normal)
+                }
+                else{  
+                    self.inconst_ident(ident,orig_kind);
+                    (index,PortIndexResult::Error)
+                }
+            },
+            None=>{
+                self.indexes.insert(ident.name.clone(), (self.indexes.len(),ident.kind));
+                (self.indexes.len()-1,if ident.kind != IdentKind::Node {
+                    PortIndexResult::NewPort
+                }
+                else{
+                    PortIndexResult::Normal
+                })
+            }
+        }
+    }
+
+    fn inconst_ident(&mut self,ident:&Identifier,orig_kind:IdentKind){
+        self.errors.push(TranslatorError::InconstIdent(ident.name.clone(),ident.kind,orig_kind));
+    }
+
+    fn extract_tuples(&mut self,tokens:Vec<Token>) -> Vec<Connection> {
         for token in tokens.iter() {
-            if  self.state == TranslatorState::Error && 
+            if  self.state == ParserState::Error && 
                 token.kind() != TokenKind::Semicolon && 
                 token.kind() != TokenKind::EndLine 
             
@@ -133,7 +131,7 @@ impl Translator {
 
             self.handle_token(token);
         }
-        self.finalize();
+        self.finalize()
     }
     fn handle_token(&mut self,token:&Token){
         
@@ -158,46 +156,47 @@ impl Translator {
             }
         }
     }
-    fn finalize(&mut self) {
-        if self.state == TranslatorState::Operator || self.state == TranslatorState::Identifier {
+    fn finalize(&mut self) -> Vec<Connection>{
+        if self.state == ParserState::Operator || self.state == ParserState::Identifier {
             self.unexpected_end();
         }
+        std::mem::replace(&mut self.connections, vec![])
     }
     fn handle_ident(&mut self,token:&Token){
         match self.state {
-            TranslatorState::Statement => {
-                self.once = token.text().to_owned();
-                self.state = TranslatorState::Operator;
+            ParserState::Statement => {
+                self.buffer = token.text().to_owned();
+                self.state = ParserState::Operator;
                 self.is_port = false;
             },
-            TranslatorState::PortStmt => {
-                self.once = token.text().to_owned();
-                self.state = TranslatorState::Operator;
+            ParserState::PortStmt => {
+                self.buffer = token.text().to_owned();
+                self.state = ParserState::Operator;
                 self.is_port = true;
             },
-            TranslatorState::Identifier => {
+            ParserState::Identifier => {
                 self.connect(token.text(),false);
-                self.once = token.text().to_owned();
+                self.buffer = token.text().to_owned();
                 self.is_port = false;
-                self.state = TranslatorState::Terminate;
+                self.state = ParserState::Terminate;
             },
-            TranslatorState::PortIdent => {
+            ParserState::PortIdent => {
                 self.connect(token.text(),true);
-                self.once = token.text().to_owned();
+                self.buffer = token.text().to_owned();
                 self.is_port = true;
-                self.state = TranslatorState::Terminate;
+                self.state = ParserState::Terminate;
             },
             _ =>{
                 self.unexpected_error(token);
-                self.state = TranslatorState::Error;
+                self.state = ParserState::Error;
             }
         }
     }
     fn handle_space(&mut self,token:&Token){
         match self.state  {
-            TranslatorState::PortIdent | TranslatorState::PortStmt => {
+            ParserState::PortIdent | ParserState::PortStmt => {
                 self.unexpected_error(token);
-                self.state = TranslatorState::Error;
+                self.state = ParserState::Error;
             }
             _=>{
                 // nothing
@@ -206,52 +205,52 @@ impl Translator {
     }
     fn handle_semicolon(&mut self,token:&Token){
         match self.state {
-            TranslatorState::Terminate | TranslatorState::Error => {
-                self.once = String::new();
-                self.state = TranslatorState::Statement;
+            ParserState::Terminate | ParserState::Error => {
+                self.buffer = String::new();
+                self.state = ParserState::Statement;
             },
             _ =>{
                 self.unexpected_error(token);
-                self.state = TranslatorState::Error;
+                self.state = ParserState::Error;
             }
         }
     }
     fn handle_operator(&mut self,token:&Token){
         match self.state {
-            TranslatorState::Terminate | TranslatorState::Operator=> {
+            ParserState::Terminate | ParserState::Operator=> {
                 if token.kind() == TokenKind::Charge {
                     self.is_charge = true;
                 }
                 else{
                     self.is_charge = false;
                 }
-                self.state = TranslatorState::Identifier;
+                self.state = ParserState::Identifier;
             },
             _ =>{
                 self.unexpected_error(token);
-                self.state = TranslatorState::Error;
+                self.state = ParserState::Error;
             }
         }
     }
     fn handle_port(&mut self,token:&Token){
         match self.state {
-            TranslatorState::Identifier => {
-                self.state = TranslatorState::PortIdent;
+            ParserState::Identifier => {
+                self.state = ParserState::PortIdent;
             },
-            TranslatorState::Statement => {
-                self.state = TranslatorState::PortStmt;
+            ParserState::Statement => {
+                self.state = ParserState::PortStmt;
             }
             _ =>{
                 self.unexpected_error(token);
-                self.state = TranslatorState::Error;
+                self.state = ParserState::Error;
             }
         }
     }
     fn handle_endline(&mut self){
         match self.state {
-            TranslatorState::Terminate | TranslatorState::Error => {
-                self.once = String::new();
-                self.state = TranslatorState::Statement;
+            ParserState::Terminate | ParserState::Error => {
+                self.buffer = String::new();
+                self.state = ParserState::Statement;
             },
             _ => {
                 // nothing
@@ -259,8 +258,18 @@ impl Translator {
         }
     }
     fn connect(&mut self,token_text:&str,port:bool){
-        let from = Identifier::new(self.once.clone(),self.is_port);
-        let to = Identifier::new(token_text.to_owned(),port);
+        let from = Identifier::new(self.buffer.clone(),if self.is_port {
+            IdentKind::InPort
+        }
+        else{
+            IdentKind::Node
+        });
+        let to = Identifier::new(token_text.to_owned(),if port {
+            IdentKind::OutPort
+        }
+        else{
+            IdentKind::Node
+        });
         self.connections.push(Connection::new(from, to, self.is_charge));
     }
     fn unexpected_error(&mut self,token:&Token){
@@ -271,31 +280,19 @@ impl Translator {
     }
 }
 
-impl Default for TranslatorState {
+impl Default for ParserState {
     fn default() -> Self {
-        TranslatorState::Statement
+        ParserState::Statement
     }
 }
-
-impl Indexer {
-    fn index(&mut self,ident:String,kind:IdentKind)->(usize,Option<IdentKind>,bool) {
-        match self.map.get(&ident) {
-            Some(index)=> {
-                if index.1 == kind {
-                    (index.0,None,false)
-                }
-                else{
-                    (index.0,Some(index.1),false)
-                }
-            },
-            None=>{
-                self.map.insert(ident, (self.map.len(),kind));
-                (self.map.len()-1,None,true)
-            }
-        }
+impl Connection {
+    fn new(from: Identifier, to: Identifier, is_charge: bool) -> Connection {
+        Connection { from, to, is_charge }
     }
 }
-
+impl Identifier {
+    fn new(name: String, kind: IdentKind) -> Self { Self { name, kind } }
+}
 
 #[cfg(test)]
 mod test {
@@ -583,9 +580,9 @@ mod test {
             token!(Charge,">",0,13),
             token!(Identifier,"c",0,14),
         ], vec![
-            TranslatorError::InconstIdent("b".to_owned(),IdentKind::OutPort,IdentKind::InPort),
-            TranslatorError::InconstIdent("a".to_owned(),IdentKind::Node,IdentKind::OutPort),
-            TranslatorError::InconstIdent("a".to_owned(),IdentKind::Node,IdentKind::InPort)
+            TranslatorError::InconstIdent("b".to_owned(),IdentKind::InPort,IdentKind::OutPort),
+            TranslatorError::InconstIdent("a".to_owned(),IdentKind::OutPort,IdentKind::Node),
+            TranslatorError::InconstIdent("a".to_owned(),IdentKind::InPort,IdentKind::Node)
         ])
     }
 }
