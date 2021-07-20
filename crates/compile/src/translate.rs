@@ -38,12 +38,14 @@ struct Translator {
     indexes:IndexMap
 }
 
+#[derive(PartialEq, Eq, Debug)]
 struct Connection {
     from: Identifier,
     to: Identifier,
     is_charge:bool
 }
 
+#[derive(PartialEq, Eq, Debug)]
 struct Identifier {
     name:String,
     kind:IdentKind,
@@ -63,16 +65,24 @@ enum PortIndexResult {
     NewPort
 }
 
-fn translate(tokens:Vec<Token>)->(Module,Vec<TranslatorError>) {
+fn compile(tokens:Vec<Token>)->(Module,Vec<TranslatorError>) {
     let errors = vec![];
-    let (cons,errors) = Parser::default().parse(tokens,errors);
-    let (module,errors) = Translator::default().build(cons,errors);
+    let (cons,errors) = parse(tokens,errors);
+    let (module,errors) = translate(cons,errors);
     (module,errors)
+}
+
+fn parse(tokens:Vec<Token>,errors:Vec<TranslatorError>)->(Vec<Connection>,Vec<TranslatorError>) {
+    Parser::default().parse(tokens,errors)
+}
+
+fn translate(connections:Vec<Connection>,errors:Vec<TranslatorError>)->(Module,Vec<TranslatorError>) {
+    Translator::default().translate(connections, errors)
 }
 
 impl Translator {
 
-    fn build(&mut self,connections:Vec<Connection>,errors:Vec<TranslatorError>)->(Module,Vec<TranslatorError>) {
+    fn translate(&mut self,connections:Vec<Connection>,errors:Vec<TranslatorError>)->(Module,Vec<TranslatorError>) {
         self.errors = errors;
         let mut builder = ModuleBuilder::default();
         for con in connections.iter() {
@@ -324,47 +334,103 @@ impl Identifier {
 #[cfg(test)]
 mod test {
 
-    use module::ModuleBuilder;
-    use crate::{lex::SourcePosition, translate::{IdentKind, Module, Token, TranslatorError, translate}};
+    #[allow(unused_macros)]
+    macro_rules! connection {
+        ($f:ident > $t:ident) => {
+            Connection::new(
+                crate::translate::Identifier::new(stringify!($f).to_owned(), crate::translate::IdentKind::Node),
+                crate::translate::Identifier::new(stringify!($t).to_owned(), crate::translate::IdentKind::Node),
+            true)
+        };
+        (!$f:ident > $t:ident) => {
+            Connection::new(
+                crate::translate::Identifier::new(stringify!($f).to_owned(), crate::translate::IdentKind::InPort),
+                crate::translate::Identifier::new(stringify!($t).to_owned(), crate::translate::IdentKind::Node),
+            true)
+        };
+        ($f:ident > !$t:ident) => {
+            Connection::new(
+                crate::translate::Identifier::new(stringify!($f).to_owned(), crate::translate::IdentKind::Node),
+                crate::translate::Identifier::new(stringify!($t).to_owned(), crate::translate::IdentKind::OutPort),
+            true)
+        };
+        (!$f:ident > !$t:ident) => {
+            Connection::new(
+                crate::translate::Identifier::new(stringify!($f).to_owned(), crate::translate::IdentKind::InPort),
+                crate::translate::Identifier::new(stringify!($t).to_owned(), crate::translate::IdentKind::OutPort),
+            true)
+        };
+        ($f:ident . $t:ident) => {
+            Connection::new(
+                crate::translate::Identifier::new(stringify!($f).to_owned(), crate::translate::IdentKind::Node),
+                crate::translate::Identifier::new(stringify!($t).to_owned(), crate::translate::IdentKind::Node),
+            false)
+        };
+        (!$f:ident . $t:ident) => {
+            Connection::new(
+                crate::translate::Identifier::new(stringify!($f).to_owned(), crate::translate::IdentKind::InPort),
+                crate::translate::Identifier::new(stringify!($t).to_owned(), crate::translate::IdentKind::Node),
+            false)
+        };
+        ($f:ident . !$t:ident) => {
+            Connection::new(
+                crate::translate::Identifier::new(stringify!($f).to_owned(), crate::translate::IdentKind::Node),
+                crate::translate::Identifier::new(stringify!($t).to_owned(), crate::translate::IdentKind::OutPort),
+            false)
+        };
+        (!$f:ident . !$t:ident) => {
+            Connection::new(
+                crate::translate::Identifier::new(stringify!($f).to_owned(), crate::translate::IdentKind::InPort),
+                crate::translate::Identifier::new(stringify!($t).to_owned(), crate::translate::IdentKind::OutPort),
+            false)
+        };
+    }
 
-    fn module_test_case(tokens:Vec<Token>,module:Module){
-        let compiled_module = translate(tokens).0;
+    use std::collections::vec_deque;
+
+    use module::ModuleBuilder;
+    use crate::{lex::SourcePosition, translate::{Connection, IdentKind, Module, Token, TranslatorError, compile, parse, translate}};
+
+    fn translate_test_case(connections:Vec<Connection>,module:Module){
+        let compiled_module = translate(connections,vec![]).0;
         assert_eq!(compiled_module,module);
     }
+    fn parser_test_case(tokens:Vec<Token>,connections:Vec<Connection>){
+        let generated_connections = parse(tokens,vec![]).0;
+        assert_eq!(generated_connections,connections);
+    }
     fn error_test_case(tokens:Vec<Token>,errors:Vec<TranslatorError>){
-        assert_eq!(translate(tokens).1,errors);
+        assert_eq!(compile(tokens).1,errors);
     }
 
     #[test]
     fn no_tokens(){
-        module_test_case(vec![], Module::default())
+        parser_test_case(vec![], vec![])
     }
 
     #[test]
     fn ignores_spaces(){
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Space,"   ",0,0),
             token!(EndLine,"\n",0,3),
             token!(Space,"    ",1,0)
-        ], Module::default())
+        ], vec![])
     }
 
     #[test]
     fn single_charge(){
-        let mut module = ModuleBuilder::default();
-        module.charge(0, 1);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Charge,">",0,1),
             token!(Identifier,"b",0,2)
-        ], module.build())
+        ], vec![
+            connection!(a > b)
+        ])
     }
 
     #[test]
     fn single_charge_with_space(){
-        let mut module = ModuleBuilder::default();
-        module.charge(0, 1);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Space,"    ",0,0),
             token!(Identifier,"a",0,4),
             token!(Space,"   ",0,5),
@@ -372,14 +438,14 @@ mod test {
             token!(Space,"  ",0,9),
             token!(Identifier,"b",0,11),
             token!(Space," ",0,12)
-        ], module.build())
+        ], vec![
+            connection!(a > b)
+        ])
     }
 
     #[test]
     fn single_charge_same_node(){
-        let mut module = ModuleBuilder::default();
-        module.charge(0, 0);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Space,"    ",0,0),
             token!(Identifier,"a",0,4),
             token!(Space,"   ",0,5),
@@ -387,15 +453,15 @@ mod test {
             token!(Space,"  ",0,9),
             token!(Identifier,"a",0,11),
             token!(Space," ",0,12)
-        ], module.build())
+        ], vec![
+            connection!(a > a)
+        ])
     }
 
     #[test]
     fn chained_statements(){
         let mut module = ModuleBuilder::default();
-        module.block(0, 1);
-        module.charge(1, 2);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Space,"   ",0,1),
             token!(Block,".",0,4),
@@ -403,15 +469,15 @@ mod test {
             token!(Identifier,"b",0,7),
             token!(Charge,">",0,8),
             token!(Identifier,"c",0,9),
-        ], module.build())
+        ], vec![
+            connection!(a . b),
+            connection!(b > c)
+        ])
     }
 
     #[test]
     fn chained_statements_reoccurring_idents(){
-        let mut module = ModuleBuilder::default();
-        module.block(0, 1);
-        module.charge(1, 0);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Space,"   ",0,1),
             token!(Block,".",0,4),
@@ -419,7 +485,10 @@ mod test {
             token!(Identifier,"b",0,7),
             token!(Charge,">",0,8),
             token!(Identifier,"a",0,9),
-        ], module.build())
+        ], vec![
+            connection!(a . b),
+            connection!(b > a)
+        ])
     }
 
     #[test]
@@ -428,7 +497,7 @@ mod test {
         module.block(0, 1);
         module.charge(1, 2);
         module.charge(0, 3);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Space,"   ",0,1),
             token!(Block,".",0,4),
@@ -442,7 +511,11 @@ mod test {
             token!(Charge,">",0,13),
             token!(Identifier,"d",0,14),
             token!(Semicolon,";",0,15),
-        ], module.build())
+        ], vec![
+            connection!(a . b),
+            connection!(b > c),
+            connection!(a > d)
+        ])
     }
 
     #[test]
@@ -450,7 +523,7 @@ mod test {
         let mut module = ModuleBuilder::default();
         module.block(0, 1);
         module.charge(0, 0);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Space,"   ",0,1),
             token!(Block,".",0,4),
@@ -464,7 +537,10 @@ mod test {
             token!(Identifier,"a",0,14),
             token!(Charge,">",0,15),
             token!(Identifier,"a",0,16),
-        ], module.build())
+        ], vec![
+            connection!(a . b),
+            connection!(a > a),
+        ])
     }
 
     #[test]
@@ -490,23 +566,20 @@ mod test {
 
     #[test]
     fn ignores_endline_in_statements(){
-        let mut module = ModuleBuilder::default();
-        module.block(0, 1);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(EndLine,"\n",0,1),
             token!(Block,".",0,2),
             token!(EndLine,"\n",0,3),
             token!(Identifier,"b",0,4)
-        ], module.build())
+        ], vec![
+            connection!(a . b)
+        ])
     }
 
     #[test]
     fn endline_terminates_statement(){
-        let mut module = ModuleBuilder::default();
-        module.block(0, 1);
-        module.charge(0, 2);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(EndLine,"\n",0,1),
             token!(Block,".",0,2),
@@ -516,14 +589,15 @@ mod test {
             token!(Identifier,"a",1,0),
             token!(Charge,">",1,1),
             token!(Identifier,"c",1,2),
-        ], module.build())
+        ], vec![
+            connection!(a . b),
+            connection!(a > c)
+        ])
     }
 
     #[test]
     fn endline_recovers_after_error(){
-        let mut module = ModuleBuilder::default();
-        module.charge(0, 1);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Block,".",0,1),
             token!(Block,".",0,2),
@@ -531,7 +605,9 @@ mod test {
             token!(Identifier,"a",1,0),
             token!(Charge,">",1,1),
             token!(Identifier,"c",1,2),
-        ], module.build())
+        ], vec![
+            connection!(a > c)
+        ])
     }
 
     #[test]
@@ -549,15 +625,17 @@ mod test {
         let mut module = ModuleBuilder::default();
         module.charge(0, 1);
         module.input(0);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Port,"$",0,0),
             token!(Identifier,"a",0,1),
             token!(Charge,">",0,2),
             token!(Space,"  ",0,3),
             token!(Identifier,"b",0,5)
-        ], module.build())
+        ], vec![
+            connection!(!a > b)
+        ])
     }
-    
+
     #[test]
     fn error_port_notfollewedby_ident(){
         error_test_case(vec![
@@ -577,12 +655,14 @@ mod test {
         let mut module = ModuleBuilder::default();
         module.charge(0, 1);
         module.output(1);
-        module_test_case(vec![
+        parser_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Charge,">",0,1),
             token!(Port,"$",0,2),
             token!(Identifier,"b",0,3)
-        ], module.build())
+        ], vec![
+            connection!(a > !b)
+        ])
     }
 
     #[test]
