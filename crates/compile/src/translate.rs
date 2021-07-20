@@ -386,8 +386,6 @@ mod test {
         };
     }
 
-    use std::collections::vec_deque;
-
     use module::ModuleBuilder;
     use crate::{lex::SourcePosition, translate::{Connection, IdentKind, Module, Token, TranslatorError, compile, parse, translate}};
 
@@ -395,12 +393,20 @@ mod test {
         let compiled_module = translate(connections,vec![]).0;
         assert_eq!(compiled_module,module);
     }
+
+    fn translate_error_test_case(connections:Vec<Connection>,errors:Vec<TranslatorError>){
+        let generated_errors = translate(connections,vec![]).1;
+        assert_eq!(generated_errors,errors);
+    }
+
     fn parser_test_case(tokens:Vec<Token>,connections:Vec<Connection>){
         let generated_connections = parse(tokens,vec![]).0;
         assert_eq!(generated_connections,connections);
     }
-    fn error_test_case(tokens:Vec<Token>,errors:Vec<TranslatorError>){
-        assert_eq!(compile(tokens).1,errors);
+
+    fn parse_error_test_case(tokens:Vec<Token>,errors:Vec<TranslatorError>){
+        let generated_errors = parse(tokens,vec![]).1;
+        assert_eq!(generated_errors,errors);
     }
 
     #[test]
@@ -545,7 +551,7 @@ mod test {
 
     #[test]
     fn error_on_sequential_identifiers(){
-        error_test_case(vec![
+        parse_error_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Space,"   ",0,1),
             token!(Block,".",0,4),
@@ -612,7 +618,7 @@ mod test {
 
     #[test]
     fn error_on_unexpected_end(){
-        error_test_case(vec![
+        parse_error_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Block,".",0,1)
         ], vec![
@@ -638,7 +644,7 @@ mod test {
 
     #[test]
     fn error_port_notfollewedby_ident(){
-        error_test_case(vec![
+        parse_error_test_case(vec![
             token!(Port,"$",0,0),
             token!(Space," ",0,1),
             token!(Identifier,"a",0,2),
@@ -662,33 +668,6 @@ mod test {
             token!(Identifier,"b",0,3)
         ], vec![
             connection!(a > !b)
-        ])
-    }
-
-    #[test]
-    fn error_inconsistant_ident_type(){
-        error_test_case(vec![
-            token!(Identifier,"a",0,0),
-            token!(Charge,">",0,1),
-            token!(Port,"$",0,2),
-            token!(Identifier,"b",0,3),
-            token!(Semicolon,";",0,4),
-
-            token!(Port,"$",0,5),
-            token!(Identifier,"b",0,6),
-            token!(Charge,">",0,7),
-            token!(Port,"$",0,8),
-            token!(Identifier,"a",0,9),
-            token!(Semicolon,";",0,10),
-
-            token!(Port,"$",0,11),
-            token!(Identifier,"a",0,12),
-            token!(Charge,">",0,13),
-            token!(Identifier,"c",0,14),
-        ], vec![
-            TranslatorError::InconstIdent("b".to_owned(),IdentKind::InPort,IdentKind::OutPort),
-            TranslatorError::InconstIdent("a".to_owned(),IdentKind::OutPort,IdentKind::Node),
-            TranslatorError::InconstIdent("a".to_owned(),IdentKind::InPort,IdentKind::Node)
         ])
     }
 }
