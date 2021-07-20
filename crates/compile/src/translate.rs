@@ -9,8 +9,7 @@ struct Parser{
     buffer:String,
     is_charge:bool,
     is_port:bool,
-    errors:Vec<TranslatorError>,
-    indexes:IndexMap
+    errors:Vec<TranslatorError>
 }
 
 type IndexMap = HashMap<String,(usize,IdentKind)>;
@@ -58,21 +57,23 @@ enum PortIndexResult {
     NewPort
 }
 
-fn translate(tokens:Vec<Token>)->(Module,Vec<TranslatorError>){
-    let mut translator = Parser::default();
-    translator.translate(tokens)
+fn translate(tokens:Vec<Token>)->(Module,Vec<TranslatorError>) {
+    let errors = vec![];
+    let (cons,errors) = Parser::default().parse(tokens,errors);
+    let (module,errors) = Translator::default().build(cons,errors);
+    (module,errors)
 }
 
-impl Parser {
+#[derive(Default)]
+struct Translator {
+    errors:Vec<TranslatorError>,
+    indexes:IndexMap
+}
 
-    fn translate(&mut self,tokens:Vec<Token>)->(Module,Vec<TranslatorError>) {
-        let cons = self.extract_tuples(tokens);
-        let module = self.build(cons);
-        let errors = std::mem::replace(&mut self.errors, vec![]);
-        (module,errors)
-    }
+impl Translator {
 
-    fn build(&mut self,connections:Vec<Connection>)->Module {
+    fn build(&mut self,connections:Vec<Connection>,errors:Vec<TranslatorError>)->(Module,Vec<TranslatorError>) {
+        self.errors = errors;
         let mut builder = ModuleBuilder::default();
         for con in connections.iter() {
 
@@ -89,7 +90,10 @@ impl Parser {
                 }
             }
         }
-        builder.build()
+        (
+            builder.build(),
+            std::mem::replace(&mut self.errors, vec![])
+        )
     }
 
     fn index(&mut self,ident:&Identifier)->(usize,PortIndexResult) {
@@ -118,8 +122,11 @@ impl Parser {
     fn inconst_ident(&mut self,ident:&Identifier,orig_kind:IdentKind){
         self.errors.push(TranslatorError::InconstIdent(ident.name.clone(),ident.kind,orig_kind));
     }
+}
 
-    fn extract_tuples(&mut self,tokens:Vec<Token>) -> Vec<Connection> {
+impl Parser {
+
+    fn parse(&mut self,tokens:Vec<Token>,errors:Vec<TranslatorError>) -> (Vec<Connection>,Vec<TranslatorError>) {
         for token in tokens.iter() {
             if  self.state == ParserState::Error && 
                 token.kind() != TokenKind::Semicolon && 
@@ -156,11 +163,16 @@ impl Parser {
             }
         }
     }
-    fn finalize(&mut self) -> Vec<Connection>{
+    fn finalize(&mut self) -> (Vec<Connection>,Vec<TranslatorError>){
         if self.state == ParserState::Operator || self.state == ParserState::Identifier {
             self.unexpected_end();
         }
-        std::mem::replace(&mut self.connections, vec![])
+        self.state = ParserState::Statement;
+
+        (
+            std::mem::replace(&mut self.connections, vec![]),
+            std::mem::replace(&mut self.errors, vec![])
+        )
     }
     fn handle_ident(&mut self,token:&Token){
         match self.state {
