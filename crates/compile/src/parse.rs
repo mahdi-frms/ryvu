@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{lex::{SourcePosition, Token, TokenKind}, translate::{Connection, IdentKind, Identifier}};
 
 #[derive(Default)]
@@ -7,8 +9,11 @@ struct Parser{
     buffer:String,
     is_charge:bool,
     is_port:bool,
-    errors:Vec<ParserError>
+    errors:Vec<ParserError>,
+    id_map:IdMap
 }
+
+type IdMap = HashMap<String,IdentKind>;
 
 #[derive(PartialEq, Eq)]
 enum ParserState {
@@ -24,7 +29,8 @@ enum ParserState {
 #[derive(Debug,PartialEq, Eq)]
 enum ParserError {
     UnexpectedToken(SourcePosition),
-    UnexpectedEnd
+    UnexpectedEnd,
+    InconstIdKind(String,IdentKind,IdentKind)
 }
 
 fn parse(tokens:Vec<Token>,errors:Vec<ParserError>)->(Vec<Connection>,Vec<ParserError>) {
@@ -186,19 +192,42 @@ impl Parser {
     }
 
     fn connect(&mut self,token_text:&str,port:bool){
-        let from = Identifier::new(self.buffer.clone(),if self.is_port {
-            IdentKind::InPort
-        }
-        else{
-            IdentKind::Node
-        });
-        let to = Identifier::new(token_text.to_owned(),if port {
-            IdentKind::OutPort
-        }
-        else{
-            IdentKind::Node
-        });
+        let from_kind = self.get_ident_kind(self.is_port, true);
+        let to_kind = self.get_ident_kind(port, false);
+        let from_id = std::mem::take(&mut self.buffer);
+        let to_id = token_text.to_owned();
+        self.check_ident_kind(&from_id, from_kind);
+        self.check_ident_kind(&to_id,to_kind);
+        let from = Identifier::new(from_id, from_kind);
+        let to = Identifier::new(token_text.to_owned(), to_kind);
         self.connections.push(Connection::new(from, to, self.is_charge));
+    }
+
+    fn get_ident_kind(&self,is_port:bool,is_from:bool) -> IdentKind {
+        if is_port {
+            if is_from {
+                IdentKind::InPort
+            }
+            else{
+                IdentKind::OutPort
+            }
+        }
+        else{
+            IdentKind::Node
+        }
+    }
+
+    fn check_ident_kind(&mut self,name:&String,kind:IdentKind){
+        match self.id_map.get(name).copied() {
+            Some(act_kind) => {
+                if kind != act_kind {
+                    self.inconst_ident_kind(name.clone(),kind,act_kind);
+                }
+            },
+            None => {
+                self.id_map.insert(name.clone(), kind);
+            }
+        }
     }
 
     fn unexpected_error(&mut self,token:&Token){
@@ -207,6 +236,10 @@ impl Parser {
 
     fn unexpected_end(&mut self){
         self.errors.push(ParserError::UnexpectedEnd);
+    }
+
+    fn inconst_ident_kind(&mut self,name:String,kind:IdentKind,act_kind:IdentKind){
+        self.errors.push(ParserError::InconstIdKind(name,kind,act_kind));
     }
 }
 
