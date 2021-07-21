@@ -65,6 +65,7 @@ fn read_bits(mut count:usize)->Vec<bool> {
     let mut input = vec![];
     let zero = '0' as u8;
     let one = '1' as u8;
+    let quit = 'q' as u8;
     while count > 0 {
         let _ = io::stdin().read(&mut buffer);
         if buffer[0] == zero {
@@ -74,6 +75,9 @@ fn read_bits(mut count:usize)->Vec<bool> {
         else if buffer[0] == one {
             input.push(true);
             count -= 1;
+        }
+        else if buffer[0] == quit {
+            exit(0);
         }
     }
     input
