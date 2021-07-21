@@ -1,4 +1,5 @@
-use std::{env::args, fs, io::{self, Read}, process::exit};
+
+use std::{env::args, fs, io::{self, Read, Write}, mem, process::exit};
 use compile::{LexerError, ParserError, compile};
 use module::Module;
 use network::Network;
@@ -7,8 +8,11 @@ mod network;
 
 fn main() {
     let args : Vec<String>= args().collect();
-    let address = &args[0];
-    let module = match read_file(address) {
+    if args.len() < 2 {
+        exit(1);
+    }
+    let address = &args[1];
+    let mut module = match read_file(address) {
         None => {
             eprintln!("could not open file '{}'",address);
             exit(1);
@@ -18,8 +22,10 @@ fn main() {
             compile_file(content)
         }
     };
+    let inputs = mem::take(&mut module.inputs);
+    let outputs = mem::take(&mut module.outputs);
     let network = Network::new(module);
-    exec_loop(network);    
+    exec_loop(network,inputs,outputs);
 }
 
 fn compile_file(source:String) -> Module {
@@ -76,6 +82,33 @@ fn get_bools(mut count:usize)->Vec<bool> {
     input
 }
 
-fn exec_loop(network:Network){
+fn get_input(network: &mut Network,inputs:&Vec<usize>){
+    let input_data = get_bools(inputs.len());
+    for i in 0..inputs.len() {
+        let index = inputs[i];
+        if input_data[i] {
+            network.charge(index);
+        }
+    }
+}
 
+fn set_output(network: &mut Network,outputs:&Vec<usize>){
+    for i in 0..outputs.len() {
+        let index = outputs[i];
+        if network.seek(index) {
+            print!("1");
+        }
+        else {
+            print!("0");
+        }
+    }
+    io::stdout().flush().unwrap();
+}
+
+fn exec_loop(mut network:Network,inputs:Vec<usize>,outputs:Vec<usize>){
+    loop {
+        get_input(&mut network, &inputs);
+        network.next();
+        set_output(&mut network, &outputs);
+    }
 }
