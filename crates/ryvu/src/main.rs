@@ -77,5 +77,5 @@ fn get_bools(mut count:usize)->Vec<bool> {
 }
 
 fn exec_loop(network:Network){
-       
+
 }

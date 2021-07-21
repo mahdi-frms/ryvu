@@ -25,11 +25,11 @@ impl Network {
         }
     }
 
-    pub fn charge(&mut self,input:usize) {
-        self.states[self.module.inputs[input]].charged = true;        
+    pub fn charge(&mut self,index:usize) {
+        self.states[index].charged = true;        
     }
-    pub fn seek(&self,input:usize) -> bool{
-        self.states[self.module.outputs[input]].charged        
+    pub fn seek(&self,index:usize) -> bool{
+        self.states[index].charged        
     }
     pub fn next(&mut self){
         for index in 0..self.states.len() {
@@ -61,13 +61,11 @@ mod test {
     fn input_charging() {
         let mut builder = ModuleBuilder::default();
         builder.charge(0, 1);
-        let input_index = builder.input(0);
-        let output_index = builder.output(1);
 
         let mut network = Network::new(builder.build());
-        network.charge(input_index);
+        network.charge(0);
         network.next();
-        let charged = network.seek(output_index);
+        let charged = network.seek(1);
         
         assert!(charged);
     }
@@ -76,13 +74,11 @@ mod test {
     fn input_charging_discharges_input() {
         let mut builder = ModuleBuilder::default();
         builder.charge(0, 1);
-        let input_index = builder.input(0);
-        let input_seek_index = builder.output(0);
 
         let mut network = Network::new(builder.build());
-        network.charge(input_index);
+        network.charge(0);
         network.next();
-        let charged = network.seek(input_seek_index);
+        let charged = network.seek(0);
         
         assert!(!charged);
     }
@@ -94,26 +90,18 @@ mod test {
         builder.charge(1, 2);
         builder.charge(2, 3);
         builder.charge(3, 4);
-        let input_index = builder.input(0);
-        let output_indexes = vec![
-            builder.output(0),
-            builder.output(1),
-            builder.output(2),
-            builder.output(3),
-            builder.output(4)
-        ];
 
         let mut network = Network::new(builder.build());
-        network.charge(input_index);
+        network.charge(0);
         network.next();
         network.next();
         network.next();
-        let charged = network.seek(output_indexes[3]);
+        let charged = network.seek(3);
         let discharged = 
-        !network.seek(output_indexes[0]) && 
-        !network.seek(output_indexes[1]) && 
-        !network.seek(output_indexes[2]) && 
-        !network.seek(output_indexes[4]);
+        !network.seek(0) && 
+        !network.seek(1) && 
+        !network.seek(2) && 
+        !network.seek(4);
         
         assert!(charged && discharged);
     }
@@ -123,16 +111,13 @@ mod test {
         builder.block(0, 2);
         builder.charge(1, 2);
         builder.charge(2, 3);
-        let input_index = builder.input(0);
-        let input_index2 = builder.input(1);
-        let output_index = builder.output(3);
 
         let mut network = Network::new(builder.build());
-        network.charge(input_index);
-        network.charge(input_index2);
+        network.charge(0);
+        network.charge(1);
         network.next();
         network.next();
-        let charged = network.seek(output_index);
+        let charged = network.seek(3);
         assert!(!charged);
     }
 }
