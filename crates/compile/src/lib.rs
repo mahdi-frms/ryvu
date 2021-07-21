@@ -1,5 +1,7 @@
-use lex::{LexerError, lex};
-use parse::{parse,ParserError};
+use lex::lex;
+pub use lex::LexerError;
+use parse::parse;
+pub use parse::ParserError;
 use module::Module;
 use translate::translate;
 
@@ -9,16 +11,13 @@ mod lex;
 mod translate;
 mod parse;
 
-enum CompileResult {
-    Ok(Module),
-    Error(Vec<LexerError>,Vec<ParserError>)
-}
+type CompileResult = Result<Module,(Vec<LexerError>,Vec<ParserError>)>;
 
-fn compile(source:&str)-> CompileResult {
+pub fn compile(source:&str)-> CompileResult {
     let (tokens,lexer_error) = lex(source);
     let (connections,parser_error) = parse(tokens);
     if lexer_error.len() > 0 && parser_error.len() > 0 {
-        CompileResult::Error(lexer_error,parser_error)
+        CompileResult::Err((lexer_error,parser_error))
     }
     else{
         CompileResult::Ok(translate(connections))
