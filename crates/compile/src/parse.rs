@@ -27,19 +27,19 @@ enum ParserState {
 }
 
 #[derive(Debug,PartialEq, Eq)]
-enum ParserError {
+pub enum ParserError {
     UnexpectedToken(SourcePosition),
     UnexpectedEnd,
     InconstIdKind(String,IdentKind,IdentKind)
 }
 
-fn parse(tokens:Vec<Token>,errors:Vec<ParserError>)->(Vec<Connection>,Vec<ParserError>) {
-    Parser::default().parse(tokens,errors)
+pub fn parse(tokens:Vec<Token>)->(Vec<Connection>,Vec<ParserError>) {
+    Parser::default().parse(tokens)
 }
 
 impl Parser {
 
-    fn parse(&mut self,tokens:Vec<Token>,errors:Vec<ParserError>) -> (Vec<Connection>,Vec<ParserError>) {
+    fn parse(&mut self,tokens:Vec<Token>) -> (Vec<Connection>,Vec<ParserError>) {
         for token in tokens.iter() {
             if  self.state == ParserState::Error && 
                 token.kind() != TokenKind::Semicolon && 
@@ -254,12 +254,12 @@ mod test {
     use crate::{lex::{SourcePosition,Token}, translate::{Connection,IdentKind}, parse::{parse,ParserError}};
 
     fn parser_test_case(tokens:Vec<Token>,connections:Vec<Connection>){
-        let generated_connections = parse(tokens,vec![]).0;
+        let generated_connections = parse(tokens).0;
         assert_eq!(generated_connections,connections);
     }
 
     fn parse_error_test_case(tokens:Vec<Token>,errors:Vec<ParserError>){
-        let generated_errors = parse(tokens,vec![]).1;
+        let generated_errors = parse(tokens).1;
         assert_eq!(generated_errors,errors);
     }
 

@@ -79,7 +79,7 @@ macro_rules! connection {
     };
 }
 
-fn translate(connections:Vec<Connection>)->Module {
+pub fn translate(connections:Vec<Connection>)->Module {
     Translator::default().translate(connections)
 }
 
