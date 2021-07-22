@@ -17,11 +17,9 @@ type IdMap = HashMap<String,IdentKind>;
 
 #[derive(PartialEq, Eq)]
 enum ParserState {
-    Statement,
+    Statement(bool),
     Operator,
-    Identifier,
-    PortIdent,
-    PortStmt,
+    Identifier(bool),
     Terminate,
     Error
 }
@@ -79,10 +77,13 @@ impl Parser {
     }
 
     fn finalize(&mut self) -> (Vec<Connection>,Vec<ParserError>){
-        if self.state == ParserState::Operator || self.state == ParserState::Identifier {
+        if self.state == ParserState::Operator || 
+        self.state == ParserState::Identifier(true) ||
+        self.state == ParserState::Identifier(false)
+        {
             self.unexpected_end();
         }
-        self.state = ParserState::Statement;
+        self.state = ParserState::Statement(false);
 
         (
             std::mem::replace(&mut self.connections, vec![]),
@@ -92,26 +93,15 @@ impl Parser {
 
     fn handle_ident(&mut self,token:&Token){
         match self.state {
-            ParserState::Statement => {
+            ParserState::Statement(is_port) => {
                 self.buffer = token.text().to_owned();
                 self.state = ParserState::Operator;
-                self.is_port = false;
+                self.is_port = is_port;
             },
-            ParserState::PortStmt => {
+            ParserState::Identifier(is_port) => {
+                self.connect(token.text(),is_port);
                 self.buffer = token.text().to_owned();
-                self.state = ParserState::Operator;
-                self.is_port = true;
-            },
-            ParserState::Identifier => {
-                self.connect(token.text(),false);
-                self.buffer = token.text().to_owned();
-                self.is_port = false;
-                self.state = ParserState::Terminate;
-            },
-            ParserState::PortIdent => {
-                self.connect(token.text(),true);
-                self.buffer = token.text().to_owned();
-                self.is_port = true;
+                self.is_port = is_port;
                 self.state = ParserState::Terminate;
             },
             _ =>{
@@ -123,7 +113,7 @@ impl Parser {
 
     fn handle_space(&mut self,token:&Token){
         match self.state  {
-            ParserState::PortIdent | ParserState::PortStmt => {
+            ParserState::Identifier(true) | ParserState::Statement(true) => {
                 self.unexpected_error(token);
                 self.state = ParserState::Error;
             }
@@ -137,7 +127,7 @@ impl Parser {
         match self.state {
             ParserState::Terminate | ParserState::Error => {
                 self.buffer = String::new();
-                self.state = ParserState::Statement;
+                self.state = ParserState::Statement(false);
             },
             _ =>{
                 self.unexpected_error(token);
@@ -155,7 +145,7 @@ impl Parser {
                 else{
                     self.is_charge = false;
                 }
-                self.state = ParserState::Identifier;
+                self.state = ParserState::Identifier(false);
             },
             _ =>{
                 self.unexpected_error(token);
@@ -166,11 +156,11 @@ impl Parser {
 
     fn handle_port(&mut self,token:&Token){
         match self.state {
-            ParserState::Identifier => {
-                self.state = ParserState::PortIdent;
+            ParserState::Identifier(false) => {
+                self.state = ParserState::Identifier(true);
             },
-            ParserState::Statement => {
-                self.state = ParserState::PortStmt;
+            ParserState::Statement(false) => {
+                self.state = ParserState::Statement(true);
             }
             _ =>{
                 self.unexpected_error(token);
@@ -183,7 +173,7 @@ impl Parser {
         match self.state {
             ParserState::Terminate | ParserState::Error => {
                 self.buffer = String::new();
-                self.state = ParserState::Statement;
+                self.state = ParserState::Statement(false);
             },
             _ => {
                 // nothing
@@ -245,7 +235,7 @@ impl Parser {
 
 impl Default for ParserState {
     fn default() -> Self {
-        ParserState::Statement
+        ParserState::Statement(false)
     }
 }
 
