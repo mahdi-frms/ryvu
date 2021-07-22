@@ -28,6 +28,7 @@ pub enum IdentKind {
     OutPort
 }
 
+#[allow(unused_macros)]
 macro_rules! connection {
     ($f:ident > $t:ident) => {
         Connection::new(
