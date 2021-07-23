@@ -167,6 +167,16 @@ mod test {
     }
 
     #[test]
+    fn repeated_connection(){
+        let mut builder = ModuleBuilder::default();
+        builder.charge(0, 1);
+        translate_test_case(vec![
+            connection!(a > b),
+            connection!(a > b)
+        ], builder.build())
+    }
+
+    #[test]
     fn single_input_single_use(){
         let mut builder = ModuleBuilder::default();
         builder.charge(0, 1);

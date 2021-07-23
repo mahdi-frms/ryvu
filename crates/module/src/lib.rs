@@ -1,7 +1,9 @@
+use std::collections::HashSet;
+
 #[derive(Default,PartialEq, Eq, Debug)]
 pub struct NodeConnections {
-    pub charging:Vec<usize>,
-    pub blocking:Vec<usize>
+    pub charging:HashSet<usize>,
+    pub blocking:HashSet<usize>
 }
 
 #[derive(Default,PartialEq, Eq,Debug)]
@@ -24,19 +26,19 @@ impl ModuleBuilder {
     }
     pub fn charge(&mut self,from:usize,to:usize) {
         self.expand(std::cmp::max(from,to)+1);
-        self.module.connections[from].charging.push(to);
+        self.module.connections[from].charging.insert(to);
     }
     pub fn block(&mut self,from:usize,to:usize) {
         self.expand(std::cmp::max(from,to)+1);
-        self.module.connections[from].blocking.push(to);
+        self.module.connections[from].blocking.insert(to);
     }
     pub fn connect(&mut self,from:usize,to:usize,is_charge:bool) {
         self.expand(std::cmp::max(from,to)+1);
         if is_charge {
-            self.module.connections[from].charging.push(to);
+            self.module.connections[from].charging.insert(to);
         }
         else{
-            self.module.connections[from].blocking.push(to);
+            self.module.connections[from].blocking.insert(to);
         }
     }
     pub fn input(&mut self,index:usize) -> usize {
