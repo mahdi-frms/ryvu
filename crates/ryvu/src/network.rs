@@ -9,6 +9,7 @@ pub struct Network {
 struct NodeState (u8);
 
 impl Network {
+
     pub fn new(module:Module)-> Network {
         let mut states = vec![];
         for _ in 0..module.connections.len() {
@@ -23,9 +24,11 @@ impl Network {
     pub fn charge(&mut self,index:usize) {
         self.states[index].set_charged(true);        
     }
+
     pub fn seek(&self,index:usize) -> bool{
         self.states[index].get_charged()
     }
+    
     pub fn next(&mut self){
         for index in 0..self.states.len() {
             if self.states[index].get_charged() && !self.states[index].get_blocked() {
@@ -49,6 +52,7 @@ impl Network {
 }
 
 impl NodeState {
+
     fn set_charged(&mut self,value:bool){
         if value {
             self.0 |= 0b0001;
@@ -57,6 +61,7 @@ impl NodeState {
             self.0 &= 0b1110;
         }
     }
+
     fn set_blocked(&mut self,value:bool){
         if value {
             self.0 |= 0b0010;
@@ -65,6 +70,7 @@ impl NodeState {
             self.0 &= 0b1101;
         }
     }
+
     fn set_being_charged(&mut self,value:bool){
         if value {
             self.0 |= 0b0100;
@@ -73,6 +79,7 @@ impl NodeState {
             self.0 &= 0b1011;
         }
     }
+
     fn set_being_blocked(&mut self,value:bool){
         if value {
             self.0 |= 0b1000;
@@ -85,12 +92,15 @@ impl NodeState {
     fn get_charged(&self)->bool {
         self.0 % 2 == 0b0001
     }
+
     fn get_blocked(&self)->bool {
         self.0 % 4 >= 0b0010
     }
+
     fn get_being_charged(&self)->bool {
         self.0 % 8 >= 0b0100
     }
+
     fn get_being_blocked(&self)->bool {
         self.0 % 16 >= 0b1000
     }
@@ -150,6 +160,7 @@ mod test {
         
         assert!(charged && discharged);
     }
+
     #[test]
     fn basic_blocking() {
         let mut builder = ModuleBuilder::default();
