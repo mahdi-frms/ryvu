@@ -20,6 +20,6 @@ pub fn compile(source:&str)-> CompileResult {
         CompileResult::Err((lexer_error,parser_error))
     }
     else{
-        CompileResult::Ok(translate(connections))
+        CompileResult::Ok(translate(connections,false).module)
     }
 }

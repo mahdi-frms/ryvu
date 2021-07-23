@@ -28,6 +28,11 @@ pub enum IdentKind {
     OutPort
 }
 
+pub struct TranslationResult {
+    pub module:Module,
+    pub identifiers:Option<(Vec<String>,Vec<String>)>
+}
+
 #[allow(unused_macros)]
 macro_rules! connection {
     ($f:ident > $t:ident) => {
@@ -80,13 +85,15 @@ macro_rules! connection {
     };
 }
 
-pub fn translate(connections:Vec<Connection>)->Module {
-    Translator::default().translate(connections)
+pub fn translate(connections:Vec<Connection>,idents:bool)->TranslationResult {
+    Translator::default().translate(connections,idents)
 }
 
 impl Translator {
 
-    fn translate(&mut self,connections:Vec<Connection>)->Module {
+    fn translate(&mut self,connections:Vec<Connection>,idents:bool)->TranslationResult {
+        let mut input_ids = vec![];
+        let mut output_ids = vec![];
         let mut builder = ModuleBuilder::default();
         for con in connections.iter() {
 
@@ -95,13 +102,27 @@ impl Translator {
 
             builder.connect(from_idx, to_idx, con.is_charge);
             if from_new && con.from.kind == IdentKind::InPort {
+                if idents {
+                    input_ids.push(con.from.name.clone());
+                }
                 builder.input(from_idx);
             }
-            if to_new && con.to.kind == IdentKind::OutPort{
+            if to_new && con.to.kind == IdentKind::OutPort {
+                if idents {
+                    output_ids.push(con.to.name.clone());
+                }
                 builder.output(to_idx);
             }
         }
-        builder.build()
+        TranslationResult{
+            module:builder.build(),
+            identifiers:if idents {
+                Some((input_ids,output_ids))
+            }
+            else{
+                None
+            }
+        }
     }
 
     fn index(&mut self,ident:&Identifier)->(usize,bool) {
@@ -136,8 +157,14 @@ mod test {
     use crate::translate::{Connection, Module, translate};
 
     fn translate_test_case(connections:Vec<Connection>,module:Module){
-        let compiled_module = translate(connections);
-        assert_eq!(compiled_module,module);
+        let translation_result = translate(connections,false);
+        assert_eq!(translation_result.module,module);
+    }
+    fn translate_test_case_ids(connections:Vec<Connection>,inputs:Vec<&str>,outputs:Vec<&str>){
+        let translation_result = translate(connections,true);
+        let (tr_ins,tr_outs) = translation_result.identifiers.unwrap();
+        assert_eq!(tr_ins,inputs.iter().map(|&s|s.to_owned()).collect::<Vec<String>>());
+        assert_eq!(tr_outs,outputs.iter().map(|&s|s.to_owned()).collect::<Vec<String>>());
     }
 
     #[test]
@@ -222,5 +249,14 @@ mod test {
             connection!(a > !b),
             connection!(c > !b)
         ], builder.build())
+    }
+
+    #[test]
+    fn list_inputs_outputs(){
+        translate_test_case_ids(vec![
+            connection!(!e > m),
+            connection!(m > !o),
+            connection!(!i . m)
+        ], vec!["e","i"],vec!["o"])
     }
 }
