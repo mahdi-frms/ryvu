@@ -61,6 +61,12 @@ macro_rules! token {
             crate::lex::SourcePosition::new($l,$c)
         )
     };
+    ($k:ident,$t:expr) => {
+        Token::new(
+            crate::lex::TokenKind::$k,$t.to_string(),
+            crate::lex::SourcePosition::new(0,0)
+        )
+    };
 }
 
 pub fn lex(source:&str)->(Vec<Token>,Vec<LexerError>) {

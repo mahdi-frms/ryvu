@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap};
 
 use crate::{lex::{SourcePosition, Token, TokenKind}, translate::{Connection, IdentKind, Identifier}};
 
@@ -6,11 +6,34 @@ use crate::{lex::{SourcePosition, Token, TokenKind}, translate::{Connection, Ide
 struct Parser{
     state:ParserState,
     connections:Vec<Connection>,
-    buffer:String,
-    is_charge:bool,
-    is_port:bool,
+    buffer:ConBuf,
+    operator_kind:OperatorKind,
     errors:Vec<ParserError>,
     id_map:IdMap
+}
+
+#[derive(Default)]
+struct ConBuf {
+    from:Vec<IdPair>,
+    to:Vec<IdPair>,
+    is_charge:bool
+}
+
+#[derive(Clone)]
+struct IdPair(String,bool);
+
+impl ConBuf {
+    fn clear(&mut self) {
+        self.from.clear();
+        self.to.clear();
+    }
+}
+
+#[derive(PartialEq, Eq,Clone, Copy)]
+enum OperatorKind {
+    Charge,
+    Block,
+    Comma
 }
 
 type IdMap = HashMap<String,IdentKind>;
@@ -58,7 +81,7 @@ impl Parser {
             TokenKind::Identifier=>{
                 self.handle_ident(token);
             },
-            TokenKind::Charge | TokenKind::Block=>{
+            TokenKind::Charge | TokenKind::Block | TokenKind::Comma=>{
                 self.handle_operator(token);
             },
             TokenKind::Semicolon=>{
@@ -73,11 +96,11 @@ impl Parser {
             TokenKind::Space=>{
                 self.handle_space(token);
             }
-            _=>{}
         }
     }
 
     fn finalize(&mut self) -> (Vec<Connection>,Vec<ParserError>){
+        self.connect();
         if self.state == ParserState::Operator || 
         self.state == ParserState::Identifier(true) ||
         self.state == ParserState::Identifier(false)
@@ -95,14 +118,11 @@ impl Parser {
     fn handle_ident(&mut self,token:&Token){
         match self.state {
             ParserState::Statement(is_port) => {
-                self.buffer = token.text().to_owned();
+                self.new_ident(token.text(),is_port,self.operator_kind);
                 self.state = ParserState::Operator;
-                self.is_port = is_port;
             },
             ParserState::Identifier(is_port) => {
-                self.connect(token.text(),is_port);
-                self.buffer = token.text().to_owned();
-                self.is_port = is_port;
+                self.new_ident(token.text(),is_port,self.operator_kind);
                 self.state = ParserState::Terminate;
             },
             _ =>{
@@ -127,7 +147,8 @@ impl Parser {
     fn handle_semicolon(&mut self,token:&Token){
         match self.state {
             ParserState::Terminate | ParserState::Error => {
-                self.buffer = String::new();
+                self.connect();
+                self.buffer.clear();
                 self.state = ParserState::Statement(false);
             },
             _ =>{
@@ -141,10 +162,13 @@ impl Parser {
         match self.state {
             ParserState::Terminate | ParserState::Operator=> {
                 if token.kind() == TokenKind::Charge {
-                    self.is_charge = true;
+                    self.operator_kind = OperatorKind::Charge;
+                }
+                else if token.kind() == TokenKind::Block{
+                    self.operator_kind = OperatorKind::Block;
                 }
                 else{
-                    self.is_charge = false;
+                    self.operator_kind = OperatorKind::Comma
                 }
                 self.state = ParserState::Identifier(false);
             },
@@ -173,7 +197,8 @@ impl Parser {
     fn handle_endline(&mut self){
         match self.state {
             ParserState::Terminate | ParserState::Error => {
-                self.buffer = String::new();
+                self.connect();
+                self.buffer.clear();
                 self.state = ParserState::Statement(false);
             },
             _ => {
@@ -182,16 +207,36 @@ impl Parser {
         }
     }
 
-    fn connect(&mut self,token_text:&str,port:bool){
-        let from_kind = self.get_ident_kind(self.is_port, true);
-        let to_kind = self.get_ident_kind(port, false);
-        let from_id = std::mem::take(&mut self.buffer);
-        let to_id = token_text.to_owned();
-        self.check_ident_kind(&from_id, from_kind);
-        self.check_ident_kind(&to_id,to_kind);
-        let from = Identifier::new(from_id, from_kind);
-        let to = Identifier::new(token_text.to_owned(), to_kind);
-        self.connections.push(Connection::new(from, to, self.is_charge));
+    fn new_ident(&mut self,token_text:&str,port:bool,operator_kind:OperatorKind){
+        if operator_kind == OperatorKind::Comma {
+            self.buffer.to.push(IdPair(token_text.to_owned(),port));
+        }
+        else{
+            if self.buffer.from.len() > 0 {
+                self.connect();
+            }
+            self.buffer.from = std::mem::take(&mut self.buffer.to);
+            self.buffer.is_charge = operator_kind == OperatorKind::Charge;
+            self.buffer.to.push(IdPair(token_text.to_owned(),port));
+        }
+    }
+
+    fn connect(&mut self){
+        for from in 0..self.buffer.from.len() {
+            for to in 0..self.buffer.to.len() {
+                self.connect_pair(self.buffer.from[from].clone(),self.buffer.to[to].clone());
+            }    
+        }
+    }
+
+    fn connect_pair(&mut self,from:IdPair,to:IdPair){
+        let from_kind = self.get_ident_kind(from.1, true);
+        let to_kind = self.get_ident_kind(to.1, false);
+        self.check_ident_kind(&from.0, from_kind);
+        self.check_ident_kind(&to.0, to_kind);
+        let from = Identifier::new(from.0, from_kind);
+        let to = Identifier::new(to.0, to_kind);
+        self.connections.push(Connection::new(from, to, self.buffer.is_charge));
     }
 
     fn get_ident_kind(&self,is_port:bool,is_from:bool) -> IdentKind {
@@ -231,6 +276,12 @@ impl Parser {
 
     fn inconst_ident_kind(&mut self,name:String,kind:IdentKind,act_kind:IdentKind){
         self.errors.push(ParserError::InconstIdKind(name,kind,act_kind));
+    }
+}
+
+impl Default for OperatorKind {
+    fn default() -> Self {
+        OperatorKind::Charge
     }
 }
 
@@ -527,6 +578,87 @@ mod test {
             ParserError::InconstIdKind("b".to_owned(),IdentKind::InPort,IdentKind::OutPort),
             ParserError::InconstIdKind("a".to_owned(),IdentKind::OutPort,IdentKind::Node),
             ParserError::InconstIdKind("a".to_owned(),IdentKind::InPort,IdentKind::Node)
+        ])
+    }
+
+    #[test]
+    fn single_connect_node_batching(){
+        parser_test_case(vec![
+            token!(Identifier,"a"),
+            token!(Comma,","),
+            token!(Identifier,"b"),
+            token!(Comma,","),
+            token!(Identifier,"c"),
+            token!(Charge,">"),
+            token!(Identifier,"d")
+        ], vec![
+            connection!(a > d),
+            connection!(b > d),
+            connection!(c > d)
+        ])
+    }
+    
+    #[test]
+    fn multi_connect_node_batching(){
+        parser_test_case(vec![
+            token!(Identifier,"a"),
+            token!(Charge,">"),
+            token!(Identifier,"b1"),
+            token!(Comma,","),
+            token!(Identifier,"b2"),
+            token!(Charge,">"),
+            token!(Identifier,"c1"),
+            token!(Comma,","),
+            token!(Identifier,"c2"),
+            token!(Block,"."),
+            token!(Identifier,"d")
+        ], vec![
+            connection!(a > b1),
+            connection!(a > b2),
+            connection!(b1 > c1),
+            connection!(b1 > c2),
+            connection!(b2 > c1),
+            connection!(b2 > c2),
+            connection!(c1 . d),
+            connection!(c2 . d)
+        ])
+    }
+
+    #[test]
+    fn port_node_batching(){
+        parser_test_case(vec![
+            token!(Port,"$"),
+            token!(Identifier,"a"),
+            token!(Charge,">"),
+            token!(Identifier,"b"),
+            token!(Comma,","),
+            token!(Identifier,"c"),
+            token!(Charge,">"),
+            token!(Port,"$"),
+            token!(Identifier,"d")
+        ], vec![
+            connection!(!a > b),
+            connection!(!a > c),
+            connection!(b > !d),
+            connection!(c > !d),
+        ])
+    }
+
+    #[test]
+    fn error_inconsistant_ident_type_node_batching(){
+        parse_error_test_case(vec![
+            token!(Port,"$"),
+            token!(Identifier,"a"),
+            token!(Charge,">"),
+            token!(Port,"$"),
+            token!(Identifier,"b"),
+            token!(Comma,","),
+            token!(Identifier,"c"),
+            token!(Charge,">"),
+            token!(Port,"$"),
+            token!(Identifier,"d")
+        ], vec![
+            ParserError::InconstIdKind("b".to_owned(),IdentKind::InPort,IdentKind::OutPort)
         ])
     }
 }
