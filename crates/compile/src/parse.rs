@@ -4,10 +4,9 @@ use crate::{lex::{SourcePosition, Token, TokenKind}, translate::{Connection, Ide
 
 #[derive(Default)]
 struct Parser{
-    state:ParserState,
+    token_index:usize,
     connections:Vec<Connection>,
     buffer:ConBuf,
-    operator_kind:OperatorKind,
     errors:Vec<ParserError>,
     id_map:IdMap
 }
@@ -38,15 +37,6 @@ enum OperatorKind {
 
 type IdMap = HashMap<String,IdentKind>;
 
-#[derive(PartialEq, Eq)]
-enum ParserState {
-    Statement(bool),
-    Operator,
-    Identifier(bool),
-    Terminate,
-    Error
-}
-
 #[derive(Debug,PartialEq, Eq)]
 pub enum ParserError {
     UnexpectedToken(SourcePosition),
@@ -62,153 +52,193 @@ pub fn parse(tokens:Vec<Token>,io_min:bool)->(Vec<Connection>,Vec<ParserError>) 
 impl Parser {
 
     fn parse(&mut self,tokens:Vec<Token>,io_min:bool) -> (Vec<Connection>,Vec<ParserError>) {
-        for token in tokens.iter() {
-            if  self.state == ParserState::Error && 
-                token.kind() != TokenKind::Semicolon && 
-                token.kind() != TokenKind::EndLine 
-            
-            {
-                continue;
+        while let Some(_) = self.peek_token(&tokens) {
+            if self.expect_source(&tokens) == None {
+                self.consume_end(&tokens);
+                self.buffer.clear();
             }
-
-            self.handle_token(token);
         }
         self.finalize(io_min)
     }
 
-    fn handle_token(&mut self,token:&Token){
-        
-        match token.kind() {
-            TokenKind::Identifier=>{
-                self.handle_ident(token);
-            },
-            TokenKind::Charge | TokenKind::Block | TokenKind::Comma=>{
-                self.handle_operator(token);
-            },
-            TokenKind::Semicolon=>{
-                self.handle_semicolon(token);
-            },
-            TokenKind::EndLine=>{
-                self.handle_endline();
+    fn consume_end(&mut self,tokens:&Vec<Token>){
+        while let Some(token) = self.peek_token(tokens) {
+            self.consume_token();
+            if token.kind() == TokenKind::EndLine || token.kind() == TokenKind::Semicolon {
+                break;
+            }
+        }
+    }
+
+    fn consume_space(&mut self,tokens:&Vec<Token>){
+        while let Some(token) = self.peek_token(tokens) {
+            if token.kind() != TokenKind::Space {
+                break;
+            }
+            else{
+                self.consume_token();
+            }
+        }
+    }
+
+    fn consume_s_and_n(&mut self,tokens:&Vec<Token>){
+        while let Some(token) = self.peek_token(tokens) {
+            if token.kind() != TokenKind::Space && token.kind() != TokenKind::EndLine {
+                break;
+            }
+            else{
+                self.consume_token();
+            }
+        }
+    }
+
+    fn expect_end(&mut self,tokens:&Vec<Token>)->Option<()> {
+        let k = self.peek_token(tokens)?.kind();
+        if k == TokenKind::EndLine || k == TokenKind::Semicolon {
+            self.consume_token();
+            Some(())
+        }
+        else{
+            None
+        }
+    }
+
+    fn expect_batch(&mut self,tokens:&Vec<Token>,operator_kind:OperatorKind)->Option<()>{
+        let mut id = self.expect_id(&tokens)?;
+        self.consume_s_and_n(tokens);
+        self.new_ident(id.0.as_str(), id.1, operator_kind);
+        while let Some(_) = self.peek(TokenKind::Comma,&tokens) {
+            self.consume_token();
+            self.consume_s_and_n(tokens);
+            id = self.expect_id(&tokens)?;
+            self.consume_s_and_n(tokens);
+            self.new_ident(id.0.as_str(), id.1, OperatorKind::Comma);
+        }
+        Some(())
+    }
+
+    fn expect_source(&mut self,tokens:&Vec<Token>)->Option<()>{
+        if let Some(_) = self.peek_token(&tokens) {
+            self.expect_statement(tokens)?;
+        }
+        while let Some(_) = self.expect_end(tokens) {
+            self.expect_statement(tokens)?;
+        }
+        Some(())
+    }
+
+    fn expect_statement(&mut self,tokens:&Vec<Token>)->Option<()>{
+        self.consume_s_and_n(tokens);
+        self.expect_batch(tokens, OperatorKind::default())?;
+        self.consume_s_and_n(tokens);
+        let op = self.expect_opr(tokens)?;
+        self.consume_s_and_n(tokens);
+        self.expect_batch(tokens, match op.kind() {
+            TokenKind::Charge => OperatorKind::Charge,
+            TokenKind::Block => OperatorKind::Block,
+            _ => OperatorKind::default(),
+        })?;
+        self.consume_space(tokens);
+        while let Some(op) = self.peek_opr(&tokens) {
+            self.consume_token();
+            self.consume_s_and_n(tokens);
+            self.expect_batch(tokens, match op.kind() {
+                TokenKind::Charge => OperatorKind::Charge,
+                TokenKind::Block => OperatorKind::Block,
+                _ => OperatorKind::default(),
+            })?;
+        }
+        self.connect();
+        self.buffer.clear();
+        Some(())
+    }
+
+    fn expect_id(&mut self,tokens:&Vec<Token>)->Option<IdPair> {
+        let t1 = self.expect_token(tokens)?;
+        match t1.kind() {
+            TokenKind::Identifier=>{ 
+                Some(IdPair(t1.text().to_owned(),false))
             },
             TokenKind::Port=>{
-                self.handle_port(token);
+                let t2 = self.expect(TokenKind::Identifier, tokens)?;
+                Some(IdPair(t2.text().to_owned(),true))
             },
-            TokenKind::Space=>{
-                self.handle_space(token);
-            }
+            _=>None
+        }
+    }
+
+    fn consume_token(&mut self){
+        self.token_index += 1;
+    }
+
+    fn expect_token<'a>(&mut self,tokens:&'a Vec<Token>) -> Option<&'a Token>{
+        let t = self.peek_token(tokens);
+        if t == None {
+            self.unexpected_end();
+        }
+        self.token_index += 1;
+        t
+    }
+
+    fn peek_token<'a>(&mut self,tokens:&'a Vec<Token>) -> Option<&'a Token>{
+        if self.token_index < tokens.len() {
+            Some(&tokens[self.token_index])
+        }
+        else{
+            None
+        }
+    }
+
+    fn expect<'a>(&mut self,kind:TokenKind,tokens:&'a Vec<Token>) -> Option<&'a Token>{
+        let t = self.expect_token(tokens)?;
+        if t.kind() == kind {
+            Some(t)   
+        }
+        else{
+            self.unexpected_token(t);
+            None
+        }
+    }
+
+    fn peek<'a>(&mut self,kind:TokenKind,tokens:&'a Vec<Token>) -> Option<&'a Token>{
+        let t = self.peek_token(tokens)?;
+        if t.kind() == kind {
+            Some(t)
+        }
+        else{
+            None
+        }
+    }
+
+    fn peek_opr<'a>(&mut self,tokens:&'a Vec<Token>) -> Option<&'a Token>{
+        let t = self.peek_token(tokens)?;
+        if t.kind() == TokenKind::Charge || t.kind() == TokenKind::Block {
+            Some(t)
+        }
+        else{
+            None
+        }
+    }
+
+    fn expect_opr<'a>(&mut self,tokens:&'a Vec<Token>) -> Option<&'a Token>{
+        let t = self.expect_token(tokens)?;
+        if t.kind() == TokenKind::Charge || t.kind() == TokenKind::Block {
+            Some(t)
+        }
+        else{
+            self.unexpected_token(t);
+            None
         }
     }
 
     fn finalize(&mut self,io_min:bool) -> (Vec<Connection>,Vec<ParserError>){
-        self.connect();
         if io_min && !self.check_io_min() {
             self.errors.push(ParserError::IOMin);
         }
-        if self.state == ParserState::Operator || 
-        self.state == ParserState::Identifier(true) ||
-        self.state == ParserState::Identifier(false)
-        {
-            self.unexpected_end();
-        }
-        self.state = ParserState::Statement(false);
-
         (
             std::mem::replace(&mut self.connections, vec![]),
             std::mem::replace(&mut self.errors, vec![])
         )
-    }
-
-    fn handle_ident(&mut self,token:&Token){
-        match self.state {
-            ParserState::Statement(is_port) => {
-                self.new_ident(token.text(),is_port,self.operator_kind);
-                self.state = ParserState::Operator;
-            },
-            ParserState::Identifier(is_port) => {
-                self.new_ident(token.text(),is_port,self.operator_kind);
-                self.state = ParserState::Terminate;
-            },
-            _ =>{
-                self.unexpected_error(token);
-                self.state = ParserState::Error;
-            }
-        }
-    }
-
-    fn handle_space(&mut self,token:&Token){
-        match self.state  {
-            ParserState::Identifier(true) | ParserState::Statement(true) => {
-                self.unexpected_error(token);
-                self.state = ParserState::Error;
-            }
-            _=>{
-                // nothing
-            }
-        }
-    }
-
-    fn handle_semicolon(&mut self,token:&Token){
-        match self.state {
-            ParserState::Terminate | ParserState::Error => {
-                self.connect();
-                self.buffer.clear();
-                self.state = ParserState::Statement(false);
-            },
-            _ =>{
-                self.unexpected_error(token);
-                self.state = ParserState::Error;
-            }
-        }
-    }
-
-    fn handle_operator(&mut self,token:&Token){
-        match self.state {
-            ParserState::Terminate | ParserState::Operator=> {
-                if token.kind() == TokenKind::Charge {
-                    self.operator_kind = OperatorKind::Charge;
-                }
-                else if token.kind() == TokenKind::Block{
-                    self.operator_kind = OperatorKind::Block;
-                }
-                else{
-                    self.operator_kind = OperatorKind::Comma
-                }
-                self.state = ParserState::Identifier(false);
-            },
-            _ =>{
-                self.unexpected_error(token);
-                self.state = ParserState::Error;
-            }
-        }
-    }
-
-    fn handle_port(&mut self,token:&Token){
-        match self.state {
-            ParserState::Identifier(false) => {
-                self.state = ParserState::Identifier(true);
-            },
-            ParserState::Statement(false) => {
-                self.state = ParserState::Statement(true);
-            }
-            _ =>{
-                self.unexpected_error(token);
-                self.state = ParserState::Error;
-            }
-        }
-    }
-
-    fn handle_endline(&mut self){
-        match self.state {
-            ParserState::Terminate | ParserState::Error => {
-                self.connect();
-                self.buffer.clear();
-                self.state = ParserState::Statement(false);
-            },
-            _ => {
-                // nothing
-            }
-        }
     }
 
     fn check_io_min(&self)->bool{
@@ -290,7 +320,7 @@ impl Parser {
         }
     }
 
-    fn unexpected_error(&mut self,token:&Token){
+    fn unexpected_token(&mut self,token:&Token){
         self.errors.push(ParserError::UnexpectedToken(token.position()))
     }
 
@@ -306,12 +336,6 @@ impl Parser {
 impl Default for OperatorKind {
     fn default() -> Self {
         OperatorKind::Charge
-    }
-}
-
-impl Default for ParserState {
-    fn default() -> Self {
-        ParserState::Statement(false)
     }
 }
 
