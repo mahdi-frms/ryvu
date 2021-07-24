@@ -51,16 +51,17 @@ enum ParserState {
 pub enum ParserError {
     UnexpectedToken(SourcePosition),
     UnexpectedEnd,
+    IOMin,
     InconstIdKind(String,IdentKind,IdentKind)
 }
 
-pub fn parse(tokens:Vec<Token>)->(Vec<Connection>,Vec<ParserError>) {
-    Parser::default().parse(tokens)
+pub fn parse(tokens:Vec<Token>,io_min:bool)->(Vec<Connection>,Vec<ParserError>) {
+    Parser::default().parse(tokens,io_min)
 }
 
 impl Parser {
 
-    fn parse(&mut self,tokens:Vec<Token>) -> (Vec<Connection>,Vec<ParserError>) {
+    fn parse(&mut self,tokens:Vec<Token>,io_min:bool) -> (Vec<Connection>,Vec<ParserError>) {
         for token in tokens.iter() {
             if  self.state == ParserState::Error && 
                 token.kind() != TokenKind::Semicolon && 
@@ -72,7 +73,7 @@ impl Parser {
 
             self.handle_token(token);
         }
-        self.finalize()
+        self.finalize(io_min)
     }
 
     fn handle_token(&mut self,token:&Token){
@@ -99,8 +100,11 @@ impl Parser {
         }
     }
 
-    fn finalize(&mut self) -> (Vec<Connection>,Vec<ParserError>){
+    fn finalize(&mut self,io_min:bool) -> (Vec<Connection>,Vec<ParserError>){
         self.connect();
+        if io_min && !self.check_io_min() {
+            self.errors.push(ParserError::IOMin);
+        }
         if self.state == ParserState::Operator || 
         self.state == ParserState::Identifier(true) ||
         self.state == ParserState::Identifier(false)
@@ -207,6 +211,26 @@ impl Parser {
         }
     }
 
+    fn check_io_min(&self)->bool{
+        let mut iflag = false;
+        let mut oflag = false;
+        for k in self.id_map.values() {
+            if *k == IdentKind::InPort {
+                iflag = true;
+                if oflag {
+                    return true;
+                }
+            }
+            else if *k == IdentKind::OutPort {
+                oflag = true;
+                if iflag {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     fn new_ident(&mut self,token_text:&str,port:bool,operator_kind:OperatorKind){
         if operator_kind == OperatorKind::Comma {
             self.buffer.to.push(IdPair(token_text.to_owned(),port));
@@ -296,12 +320,17 @@ mod test {
     use crate::{lex::{SourcePosition,Token}, translate::{Connection,IdentKind}, parse::{parse,ParserError}};
 
     fn parser_test_case(tokens:Vec<Token>,connections:Vec<Connection>){
-        let generated_connections = parse(tokens).0;
+        let generated_connections = parse(tokens,false).0;
         assert_eq!(generated_connections,connections);
     }
 
     fn parse_error_test_case(tokens:Vec<Token>,errors:Vec<ParserError>){
-        let generated_errors = parse(tokens).1;
+        let generated_errors = parse(tokens,false).1;
+        assert_eq!(generated_errors,errors);
+    }
+
+    fn parse_error_test_case_io_min(tokens:Vec<Token>,errors:Vec<ParserError>){
+        let generated_errors = parse(tokens,true).1;
         assert_eq!(generated_errors,errors);
     }
 
@@ -659,6 +688,21 @@ mod test {
             token!(Identifier,"d")
         ], vec![
             ParserError::InconstIdKind("b".to_owned(),IdentKind::InPort,IdentKind::OutPort)
+        ])
+    }
+
+    #[test]
+    fn error_io_min_violated(){
+        parse_error_test_case_io_min(vec![
+            token!(Identifier,"a"),
+            token!(Charge,">"),
+            token!(Identifier,"b"),
+            token!(EndLine,"\n"),
+            token!(Identifier,"a"),
+            token!(Charge,">"),
+            token!(Identifier,"c"),
+        ], vec![
+            ParserError::IOMin
         ])
     }
 }

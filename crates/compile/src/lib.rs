@@ -15,7 +15,7 @@ type CompileResult = Result<Module,(Vec<LexerError>,Vec<ParserError>)>;
 
 pub fn compile(source:&str)-> CompileResult {
     let (tokens,lexer_error) = lex(source);
-    let (connections,parser_error) = parse(tokens);
+    let (connections,parser_error) = parse(tokens,false);
     if lexer_error.len() > 0 && parser_error.len() > 0 {
         CompileResult::Err((lexer_error,parser_error))
     }
