@@ -73,6 +73,7 @@ impl Parser {
             TokenKind::Space=>{
                 self.handle_space(token);
             }
+            _=>{}
         }
     }
 

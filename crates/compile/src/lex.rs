@@ -44,7 +44,8 @@ pub enum TokenKind {
     EndLine,
     Charge,
     Block,
-    Semicolon
+    Semicolon,
+    Comma
 }
 
 #[derive(PartialEq, Eq, Debug,Clone, Copy)]
@@ -73,7 +74,7 @@ impl Lexer {
             if ch == ' ' {
                 self.handle_space();
             }
-            else if [';','.','>','$'].contains(&ch) {
+            else if [';','.','>','$',','].contains(&ch) {
                 self.handle_signs(ch);
             }
             else if Self::is_alphanumeric(ch) {
@@ -104,6 +105,7 @@ impl Lexer {
             ';' => TokenKind::Semicolon,
             '$' => TokenKind::Port,
             '>' => TokenKind::Charge,
+            ',' => TokenKind::Comma,
             _ => TokenKind::Block
         };
         self.tokens.push(Token::new(kind, ch.to_string(), self.current_pos()));
@@ -305,6 +307,22 @@ mod test {
             token!(Space,"   ",1,0),
             token!(EndLine,"\n",1,3),
             token!(Port,"$",2,0)
+        ]);
+        assert_eq!(errors,vec![]);
+    }
+
+    #[test]
+    fn supports_comma(){
+        let source = "  , \n   \n,";
+        let (tokens,errors) = lex(source);
+        assert_eq!(tokens,vec![
+            token!(Space,"  ",0,0),
+            token!(Comma,",",0,2),
+            token!(Space," ",0,3),
+            token!(EndLine,"\n",0,4),
+            token!(Space,"   ",1,0),
+            token!(EndLine,"\n",1,3),
+            token!(Comma,",",2,0)
         ]);
         assert_eq!(errors,vec![]);
     }
