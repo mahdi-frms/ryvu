@@ -56,45 +56,63 @@ impl Parser {
         self.finalize(io_min)
     }
 
-    fn expect_end(&mut self)->Option<()> {
-        let k = self.peek_token()?.kind();
-        if k == TokenKind::EndLine || k == TokenKind::Semicolon {
-            self.consume_token();
-            Some(())
-        }
-        else{
-            None
-        }
-    }
-
     fn expect_source(&mut self)->Option<()>{
-        if let Some(_) = self.peek_token() {
-            self.expect_statement()?;
-        }
-        while let Some(_) = self.expect_end() {
-            self.expect_statement()?;
+        self.consume_s_and_n();
+        while let Some(token) = self.peek_token() {
+            match token.kind() {
+                TokenKind::Identifier | TokenKind::Port =>{
+                    self.expect_statement()?;
+                    self.consume_s_and_n();
+                },
+                TokenKind::Semicolon=>{
+                    self.consume_token();
+                }
+                _=>{
+                    self.err_unexpected_token(&token);
+                    return None;
+                }
+            }
         }
         Some(())
     }
 
     fn expect_statement(&mut self)->Option<()>{
-        self.consume_s_and_n();
         self.expect_batch(OperatorKind::default())?;
-        let op = self.expect_opr()?;
         self.consume_s_and_n();
-        self.expect_batch(match op.kind() {
-            TokenKind::Charge => OperatorKind::Charge,
-            TokenKind::Block => OperatorKind::Block,
-            _ => OperatorKind::default(),
-        })?;
-        while let Some(op) = self.peek_opr() {
-            self.consume_token();
-            self.consume_s_and_n();
-            self.expect_batch(match op.kind() {
-                TokenKind::Charge => OperatorKind::Charge,
-                TokenKind::Block => OperatorKind::Block,
-                _ => OperatorKind::default(),
-            })?;
+        self.expect_opbch()?;
+        loop {
+            let pr = self.peek_token();
+            if pr == None {
+                break;
+            }
+            let token = pr.unwrap();
+            match token.kind() {
+                TokenKind::Charge | TokenKind::Block => {
+                    self.expect_opbch()?;
+                },
+                TokenKind::EndLine =>{
+                    self.consume_s_and_n();
+                    match self.peek_token() {
+                        None => break,
+                        Some(token) => match token.kind() {
+                            TokenKind::Identifier | TokenKind::Port => break,
+                            TokenKind::Charge | TokenKind::Block =>continue,
+                            _=>{
+                                self.err_unexpected_token(&token);
+                                return None;
+                            }
+                        }
+                    }
+                },
+                TokenKind::Semicolon =>{
+                    self.consume_token();
+                    break;
+                }
+                _=>{
+                    self.err_unexpected_token(&token);
+                    return None;
+                }
+            }
         }
         self.connect();
         self.clear_buffer();
@@ -103,15 +121,27 @@ impl Parser {
 
     fn expect_batch(&mut self,operator_kind:OperatorKind)->Option<()>{
         let mut id = self.expect_id()?;
-        self.consume_s_and_n();
+        self.consume_s();
+       
         self.new_ident(id.0.as_str(), id.1, operator_kind);
         while let Some(_) = self.peek(TokenKind::Comma) {
             self.consume_token();
             self.consume_s_and_n();
             id = self.expect_id()?;
-            self.consume_s_and_n();
+            self.consume_s();
             self.new_ident(id.0.as_str(), id.1, OperatorKind::Comma);
         }
+        Some(())
+    }
+
+    fn expect_opbch(&mut self)->Option<()>{
+        let op = self.expect_opr()?;
+        self.consume_s_and_n();
+        self.expect_batch(match op.kind() {
+            TokenKind::Charge => OperatorKind::Charge,
+            TokenKind::Block => OperatorKind::Block,
+            _ => OperatorKind::default(),
+        })?;
         Some(())
     }
 
@@ -149,18 +179,19 @@ impl Parser {
         }
     }
 
+    fn consume_s(&mut self){
+        while let Some(token) = self.peek_token() {
+            if token.kind() != TokenKind::Space {
+                break;
+            }
+            else{
+                self.consume_token();
+            }
+        }
+    }
+
     fn consume_token(&mut self){
         self.token_index += 1;
-    }
-    
-    fn peek_opr(&mut self) -> Option<Token>{
-        let t = self.peek_token()?;
-        if t.kind() == TokenKind::Charge || t.kind() == TokenKind::Block {
-            Some(t)
-        }
-        else{
-            None
-        }
     }
 
     fn expect_opr(&mut self) -> Option<Token>{
@@ -331,13 +362,19 @@ mod test {
     use crate::{lex::{SourcePosition,Token}, translate::{Connection,IdentKind}, parse::{parse,ParserError}};
 
     fn parser_test_case(tokens:Vec<Token>,connections:Vec<Connection>){
-        let generated_connections = parse(tokens,false).0;
-        assert_eq!(generated_connections,connections);
+        let pr = parse(tokens,false);
+        assert_eq!(pr.1,vec![]);
+        assert_eq!(pr.0,connections);
     }
 
     fn parse_error_test_case(tokens:Vec<Token>,errors:Vec<ParserError>){
         let generated_errors = parse(tokens,false).1;
         assert_eq!(generated_errors,errors);
+    }
+
+    fn parse_test_case_force_output(tokens:Vec<Token>,connections:Vec<Connection>){
+        let generated_errors = parse(tokens,false).0;
+        assert_eq!(generated_errors,connections);
     }
 
     fn parse_error_test_case_io_min(tokens:Vec<Token>,errors:Vec<ParserError>){
@@ -457,7 +494,7 @@ mod test {
 
     #[test]
     fn passes_on_sequential_identifiers(){
-        parser_test_case(vec![
+        parse_test_case_force_output(vec![
             token!(Identifier,"a",0,0),
             token!(Space,"   ",0,1),
             token!(Block,".",0,4),
