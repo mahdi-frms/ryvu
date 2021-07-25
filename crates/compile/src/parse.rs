@@ -433,7 +433,7 @@ mod test {
     }
 
     #[test]
-    fn semincolon_statement_seperation(){
+    fn semicolon_statement_seperation(){
         parser_test_case(vec![
             token!(Identifier,"a",0,0),
             token!(Space,"   ",0,1),
