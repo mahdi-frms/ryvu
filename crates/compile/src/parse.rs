@@ -4,6 +4,7 @@ use crate::{lex::{SourcePosition, Token, TokenKind}, translate::{Connection, Ide
 
 #[derive(Default)]
 struct Parser{
+    tokens:Vec<Token>,
     token_index:usize,
     connections:Vec<Connection>,
     buffer:ConBuf,
@@ -20,13 +21,6 @@ struct ConBuf {
 
 #[derive(Clone)]
 struct IdPair(String,bool);
-
-impl ConBuf {
-    fn clear(&mut self) {
-        self.from.clear();
-        self.to.clear();
-    }
-}
 
 #[derive(PartialEq, Eq,Clone, Copy)]
 enum OperatorKind {
@@ -52,37 +46,18 @@ pub fn parse(tokens:Vec<Token>,io_min:bool)->(Vec<Connection>,Vec<ParserError>) 
 impl Parser {
 
     fn parse(&mut self,tokens:Vec<Token>,io_min:bool) -> (Vec<Connection>,Vec<ParserError>) {
-        while let Some(_) = self.peek_token(&tokens) {
-            if self.expect_source(&tokens) == None {
-                self.consume_end(&tokens);
-                self.buffer.clear();
+        self.tokens = tokens;
+        while let Some(_) = self.peek_token() {
+            if self.expect_source() == None {
+                self.consume_end();
+                self.clear_buffer();
             }
         }
         self.finalize(io_min)
     }
 
-    fn consume_end(&mut self,tokens:&Vec<Token>){
-        while let Some(token) = self.peek_token(tokens) {
-            self.consume_token();
-            if token.kind() == TokenKind::EndLine || token.kind() == TokenKind::Semicolon {
-                break;
-            }
-        }
-    }
-
-    fn consume_s_and_n(&mut self,tokens:&Vec<Token>){
-        while let Some(token) = self.peek_token(tokens) {
-            if token.kind() != TokenKind::Space && token.kind() != TokenKind::EndLine {
-                break;
-            }
-            else{
-                self.consume_token();
-            }
-        }
-    }
-
-    fn expect_end(&mut self,tokens:&Vec<Token>)->Option<()> {
-        let k = self.peek_token(tokens)?.kind();
+    fn expect_end(&mut self)->Option<()> {
+        let k = self.peek_token()?.kind();
         if k == TokenKind::EndLine || k == TokenKind::Semicolon {
             self.consume_token();
             Some(())
@@ -92,128 +67,148 @@ impl Parser {
         }
     }
 
-    fn expect_batch(&mut self,tokens:&Vec<Token>,operator_kind:OperatorKind)->Option<()>{
-        let mut id = self.expect_id(&tokens)?;
-        self.consume_s_and_n(tokens);
-        self.new_ident(id.0.as_str(), id.1, operator_kind);
-        while let Some(_) = self.peek(TokenKind::Comma,&tokens) {
-            self.consume_token();
-            self.consume_s_and_n(tokens);
-            id = self.expect_id(&tokens)?;
-            self.consume_s_and_n(tokens);
-            self.new_ident(id.0.as_str(), id.1, OperatorKind::Comma);
+    fn expect_source(&mut self)->Option<()>{
+        if let Some(_) = self.peek_token() {
+            self.expect_statement()?;
+        }
+        while let Some(_) = self.expect_end() {
+            self.expect_statement()?;
         }
         Some(())
     }
 
-    fn expect_source(&mut self,tokens:&Vec<Token>)->Option<()>{
-        if let Some(_) = self.peek_token(&tokens) {
-            self.expect_statement(tokens)?;
-        }
-        while let Some(_) = self.expect_end(tokens) {
-            self.expect_statement(tokens)?;
-        }
-        Some(())
-    }
-
-    fn expect_statement(&mut self,tokens:&Vec<Token>)->Option<()>{
-        self.consume_s_and_n(tokens);
-        self.expect_batch(tokens, OperatorKind::default())?;
-        let op = self.expect_opr(tokens)?;
-        self.consume_s_and_n(tokens);
-        self.expect_batch(tokens, match op.kind() {
+    fn expect_statement(&mut self)->Option<()>{
+        self.consume_s_and_n();
+        self.expect_batch(OperatorKind::default())?;
+        let op = self.expect_opr()?;
+        self.consume_s_and_n();
+        self.expect_batch(match op.kind() {
             TokenKind::Charge => OperatorKind::Charge,
             TokenKind::Block => OperatorKind::Block,
             _ => OperatorKind::default(),
         })?;
-        while let Some(op) = self.peek_opr(&tokens) {
+        while let Some(op) = self.peek_opr() {
             self.consume_token();
-            self.consume_s_and_n(tokens);
-            self.expect_batch(tokens, match op.kind() {
+            self.consume_s_and_n();
+            self.expect_batch(match op.kind() {
                 TokenKind::Charge => OperatorKind::Charge,
                 TokenKind::Block => OperatorKind::Block,
                 _ => OperatorKind::default(),
             })?;
         }
         self.connect();
-        self.buffer.clear();
+        self.clear_buffer();
         Some(())
     }
 
-    fn expect_id(&mut self,tokens:&Vec<Token>)->Option<IdPair> {
-        let t1 = self.expect_token(tokens)?;
+    fn expect_batch(&mut self,operator_kind:OperatorKind)->Option<()>{
+        let mut id = self.expect_id()?;
+        self.consume_s_and_n();
+        self.new_ident(id.0.as_str(), id.1, operator_kind);
+        while let Some(_) = self.peek(TokenKind::Comma) {
+            self.consume_token();
+            self.consume_s_and_n();
+            id = self.expect_id()?;
+            self.consume_s_and_n();
+            self.new_ident(id.0.as_str(), id.1, OperatorKind::Comma);
+        }
+        Some(())
+    }
+
+    fn expect_id(&mut self)->Option<IdPair> {
+        let t1 = self.expect_token()?;
         match t1.kind() {
             TokenKind::Identifier=>{ 
                 Some(IdPair(t1.text().to_owned(),false))
             },
             TokenKind::Port=>{
-                let t2 = self.expect(TokenKind::Identifier, tokens)?;
+                let t2 = self.expect(TokenKind::Identifier)?;
                 Some(IdPair(t2.text().to_owned(),true))
             },
             _=>None
         }
     }
 
+    fn consume_end(&mut self){
+        while let Some(token) = self.peek_token() {
+            self.consume_token();
+            if token.kind() == TokenKind::EndLine || token.kind() == TokenKind::Semicolon {
+                break;
+            }
+        }
+    }
+
+    fn consume_s_and_n(&mut self){
+        while let Some(token) = self.peek_token() {
+            if token.kind() != TokenKind::Space && token.kind() != TokenKind::EndLine {
+                break;
+            }
+            else{
+                self.consume_token();
+            }
+        }
+    }
+
     fn consume_token(&mut self){
         self.token_index += 1;
     }
+    
+    fn peek_opr(&mut self) -> Option<Token>{
+        let t = self.peek_token()?;
+        if t.kind() == TokenKind::Charge || t.kind() == TokenKind::Block {
+            Some(t)
+        }
+        else{
+            None
+        }
+    }
 
-    fn expect_token<'a>(&mut self,tokens:&'a Vec<Token>) -> Option<&'a Token>{
-        let t = self.peek_token(tokens);
+    fn expect_opr(&mut self) -> Option<Token>{
+        let t = self.expect_token()?;
+        if t.kind() == TokenKind::Charge || t.kind() == TokenKind::Block {
+            Some(t)
+        }
+        else{
+            self.err_unexpected_token(&t);
+            None
+        }
+    }
+
+    fn expect_token(&mut self) -> Option<Token>{
+        let t = self.peek_token();
         if t == None {
-            self.unexpected_end();
+            self.err_unexpected_end();
         }
         self.token_index += 1;
         t
     }
 
-    fn peek_token<'a>(&mut self,tokens:&'a Vec<Token>) -> Option<&'a Token>{
-        if self.token_index < tokens.len() {
-            Some(&tokens[self.token_index])
+    fn peek_token(&mut self) -> Option<Token>{
+        if self.token_index < self.tokens.len() {
+            Some(self.tokens[self.token_index].clone())
         }
         else{
             None
         }
     }
 
-    fn expect<'a>(&mut self,kind:TokenKind,tokens:&'a Vec<Token>) -> Option<&'a Token>{
-        let t = self.expect_token(tokens)?;
+    fn expect(&mut self,kind:TokenKind) -> Option<Token>{
+        let t = self.expect_token()?;
         if t.kind() == kind {
             Some(t)   
         }
         else{
-            self.unexpected_token(t);
+            self.err_unexpected_token(&t);
             None
         }
     }
 
-    fn peek<'a>(&mut self,kind:TokenKind,tokens:&'a Vec<Token>) -> Option<&'a Token>{
-        let t = self.peek_token(tokens)?;
+    fn peek(&mut self,kind:TokenKind) -> Option<Token>{
+        let t = self.peek_token()?;
         if t.kind() == kind {
             Some(t)
         }
         else{
-            None
-        }
-    }
-
-    fn peek_opr<'a>(&mut self,tokens:&'a Vec<Token>) -> Option<&'a Token>{
-        let t = self.peek_token(tokens)?;
-        if t.kind() == TokenKind::Charge || t.kind() == TokenKind::Block {
-            Some(t)
-        }
-        else{
-            None
-        }
-    }
-
-    fn expect_opr<'a>(&mut self,tokens:&'a Vec<Token>) -> Option<&'a Token>{
-        let t = self.expect_token(tokens)?;
-        if t.kind() == TokenKind::Charge || t.kind() == TokenKind::Block {
-            Some(t)
-        }
-        else{
-            self.unexpected_token(t);
             None
         }
     }
@@ -270,6 +265,11 @@ impl Parser {
         }
     }
 
+    fn clear_buffer(&mut self){
+        self.buffer.from.clear();
+        self.buffer.to.clear();
+    }
+
     fn connect_pair(&mut self,from:IdPair,to:IdPair){
         let from_kind = self.get_ident_kind(from.1, true);
         let to_kind = self.get_ident_kind(to.1, false);
@@ -298,7 +298,7 @@ impl Parser {
         match self.id_map.get(name).copied() {
             Some(act_kind) => {
                 if kind != act_kind {
-                    self.inconst_ident_kind(name.clone(),kind,act_kind);
+                    self.err_inconst_ident_kind(name.clone(),kind,act_kind);
                 }
             },
             None => {
@@ -307,15 +307,15 @@ impl Parser {
         }
     }
 
-    fn unexpected_token(&mut self,token:&Token){
+    fn err_unexpected_token(&mut self,token:&Token){
         self.errors.push(ParserError::UnexpectedToken(token.position()))
     }
 
-    fn unexpected_end(&mut self){
+    fn err_unexpected_end(&mut self){
         self.errors.push(ParserError::UnexpectedEnd);
     }
 
-    fn inconst_ident_kind(&mut self,name:String,kind:IdentKind,act_kind:IdentKind){
+    fn err_inconst_ident_kind(&mut self,name:String,kind:IdentKind,act_kind:IdentKind){
         self.errors.push(ParserError::InconstIdKind(name,kind,act_kind));
     }
 }

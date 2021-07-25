@@ -23,7 +23,7 @@ pub struct LexerError{
 }
 
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Token {
     kind:TokenKind,
     text:String,
