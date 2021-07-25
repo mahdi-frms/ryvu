@@ -25,19 +25,19 @@ fn get_path() -> String {
 }
 
 fn compile_file(source:&String) -> Module {
-    match compile(source.as_str()) {
-        Ok(module)=>{
-            module
-        },
-        Err((lerr,perr)) => {
-            for err in lerr.iter() {
-                print_lerror(err);
-            }
-            for err in perr.iter() {
-                print_perror(err);
-            }
-            exit(1);
+
+    let cr = compile(source.as_str(),false,true);
+    if let Some(module) = cr.module {
+        module
+    }
+    else {
+        for err in cr.lerrors.iter() {
+            print_lerror(err);
         }
+        for err in cr.perrors.iter() {
+            print_perror(err);
+        }
+        exit(1);
     }
 }   
 
