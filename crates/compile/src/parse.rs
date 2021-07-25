@@ -70,17 +70,6 @@ impl Parser {
         }
     }
 
-    fn consume_space(&mut self,tokens:&Vec<Token>){
-        while let Some(token) = self.peek_token(tokens) {
-            if token.kind() != TokenKind::Space {
-                break;
-            }
-            else{
-                self.consume_token();
-            }
-        }
-    }
-
     fn consume_s_and_n(&mut self,tokens:&Vec<Token>){
         while let Some(token) = self.peek_token(tokens) {
             if token.kind() != TokenKind::Space && token.kind() != TokenKind::EndLine {
@@ -130,7 +119,6 @@ impl Parser {
     fn expect_statement(&mut self,tokens:&Vec<Token>)->Option<()>{
         self.consume_s_and_n(tokens);
         self.expect_batch(tokens, OperatorKind::default())?;
-        self.consume_s_and_n(tokens);
         let op = self.expect_opr(tokens)?;
         self.consume_s_and_n(tokens);
         self.expect_batch(tokens, match op.kind() {
@@ -138,7 +126,6 @@ impl Parser {
             TokenKind::Block => OperatorKind::Block,
             _ => OperatorKind::default(),
         })?;
-        self.consume_space(tokens);
         while let Some(op) = self.peek_opr(&tokens) {
             self.consume_token();
             self.consume_s_and_n(tokens);
@@ -727,6 +714,25 @@ mod test {
             token!(Identifier,"c"),
         ], vec![
             ParserError::IOMin
+        ])
+    }
+
+    #[test]
+    fn operater_at_next_line(){
+        parser_test_case(vec![
+            token!(Identifier,"a"),
+            token!(Charge,">"),
+            token!(Identifier,"b"),
+            token!(Comma,","),
+            token!(Identifier,"c"),
+            token!(EndLine,"\n"),
+            token!(Charge,">"),
+            token!(Identifier,"d"),
+        ], vec![
+            connection!(a > b),
+            connection!(a > c),
+            connection!(b > d),
+            connection!(c > d),
         ])
     }
 }
