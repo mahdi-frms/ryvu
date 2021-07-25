@@ -49,3 +49,29 @@ pub fn compile(source:&str,gen_ids:bool,io_min:bool)-> CompilationResult {
         }
     }
 }
+
+#[cfg(test)]
+mod test{
+
+    use crate::{Module,compile};
+
+    fn compile_case(source:&str,module:Module){
+        let cr = compile(source,false,false);
+        assert_eq!(cr.module.expect("no module provided!"),module);
+    }
+
+    #[test]
+    fn empty_source() {
+        compile_case("", Module::default());
+    }
+
+    #[test]
+    fn space_nextline_only() {
+        compile_case("\n    \n\n \n    \n\n  \n   \n\n\n   ", Module::default());
+    }
+
+    #[test]
+    fn space_nextline_semic_only() {
+        compile_case("\n   ;;; \n\n \n ;;;  ;;; \n;\n  \n   \n\n\n   ", Module::default());
+    }
+}
