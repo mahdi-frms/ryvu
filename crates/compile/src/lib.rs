@@ -53,6 +53,8 @@ pub fn compile(source:&str,gen_ids:bool,io_min:bool)-> CompilationResult {
 #[cfg(test)]
 mod test{
 
+    use module::ModuleBuilder;
+
     use crate::{Module,compile};
 
     fn compile_case(source:&str,module:Module){
@@ -73,5 +75,13 @@ mod test{
     #[test]
     fn space_nextline_semic_only() {
         compile_case("\n   ;;; \n\n \n ;;;  ;;; \n;\n  \n   \n\n\n   ", Module::default());
+    }
+
+
+    #[test]
+    fn simple_charge() {
+        let mut builder = ModuleBuilder::default();
+        builder.charge(0,1);
+        compile_case("a > b", builder.build());
     }
 }
