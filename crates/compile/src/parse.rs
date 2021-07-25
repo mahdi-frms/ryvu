@@ -224,7 +224,7 @@ impl Parser {
     }
 
     fn finalize(&mut self,io_min:bool) -> (Vec<Connection>,Vec<ParserError>){
-        if io_min && !self.check_io_min() {
+        if io_min && self.errors.len() == 0 && !self.check_io_min() {
             self.errors.push(ParserError::IOMin);
         }
         (
@@ -770,6 +770,17 @@ mod test {
             token!(Block,".",0,2),
         ], vec![
             ParserError::UnexpectedToken(SourcePosition::new(0,1))
+        ])
+    }
+
+    #[test]
+    fn io_min_violation_wihout_basic_errors(){
+        parse_error_test_case_io_min(vec![
+            token!(Identifier,"a",0,0),
+            token!(Charge,">",0,1),
+            token!(Block,".",0,2),
+        ], vec![
+            ParserError::UnexpectedToken(SourcePosition::new(0,2))
         ])
     }
 }
