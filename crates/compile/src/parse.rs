@@ -153,7 +153,10 @@ impl Parser {
                 let t2 = self.expect(&[TokenKind::Identifier])?;
                 Some(IdPair(t2.text().to_owned(),true))
             },
-            _=>None
+            _=>{
+                self.err_unexpected_token(&t1);
+                None
+            }
         }
     }
 
@@ -544,7 +547,7 @@ mod test {
 
     #[test]
     fn endline_recovers_after_error(){
-        parser_test_case(vec![
+        parse_test_case_force_output(vec![
             token!(Identifier,"a",0,0),
             token!(Block,".",0,1),
             token!(Block,".",0,2),
@@ -746,6 +749,27 @@ mod test {
             connection!(a > c),
             connection!(b > d),
             connection!(c > d),
+        ])
+    }
+    #[test]
+    fn unexpected_token_after_opr(){
+        parse_error_test_case(vec![
+            token!(Identifier,"a",0,0),
+            token!(Charge,">",0,1),
+            token!(Block,".",0,2),
+        ], vec![
+            ParserError::UnexpectedToken(SourcePosition::new(0,2))
+        ])
+    }
+
+    #[test]
+    fn unexpected_token_after_port_sign(){
+        parse_error_test_case(vec![
+            token!(Port,"$",0,0),
+            token!(Charge,">",0,1),
+            token!(Block,".",0,2),
+        ], vec![
+            ParserError::UnexpectedToken(SourcePosition::new(0,1))
         ])
     }
 }
