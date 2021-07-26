@@ -132,4 +132,12 @@ mod test{
         builder.block(0,1);
         compile_case("\n\n\n\na . b", builder.build());
     }
+
+
+    #[test]
+    fn multiple_endline_semicolon() {
+        let mut builder = ModuleBuilder::default();
+        builder.block(0,1);
+        compile_case("\n\n  \n;;\na  . b;\n\n;;; \n;\n", builder.build());
+    }
 }
