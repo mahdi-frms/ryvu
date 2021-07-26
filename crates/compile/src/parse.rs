@@ -36,6 +36,26 @@ impl Inverter {
             stack:vec![]
         }
     }
+    fn consume_end(&mut self){
+        while let Some(token) = self.stack.last().cloned() {
+            self.stack.pop();
+            if token.kind() == TokenKind::Semicolon || token.kind() == TokenKind::EndLine {
+                return;
+            }
+        }
+        loop {
+            if self.tokens.len() == self.index {
+                return;
+            }
+            let t = self.tokens[self.index].kind();
+            if t == TokenKind::Semicolon || t == TokenKind::EndLine {
+                return;
+            }
+            else {
+                self.index += 1;
+            }
+        }
+    }
     fn expect(&mut self)-> Option<Token> {
         let t = self.peek();
         self.stack.pop();
@@ -56,7 +76,6 @@ impl Inverter {
                 self.stack.push(token);
             },
             TokenKind::Space => {
-                // self.index += 1;
                 if self.state == InverterState::WasPort {
                     self.stack.push(token);
                     self.state = InverterState::Normal;
@@ -581,7 +600,7 @@ mod test_inverter{
 
 #[cfg(test)]
 mod test_parser {
-    use crate::{lex::{SourcePosition,Token}, translate::{Connection,IdentKind}, parse::{parse,ParserError,Inverter}};
+    use crate::{lex::{SourcePosition,Token}, translate::{Connection,IdentKind}, parse::{parse,ParserError}};
 
     fn parser_test_case(tokens:Vec<Token>,connections:Vec<Connection>){
         let pr = parse(tokens,false);
