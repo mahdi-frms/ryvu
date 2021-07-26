@@ -478,3 +478,16 @@ fn io_min_violation_wihout_basic_errors() {
         vec![ParserError::UnexpectedToken(SourcePosition::new(0, 2))],
     )
 }
+
+#[test]
+fn outport_block_violation() {
+    parse_error_test_case(
+        vec![
+            token!(Identifier, "a", 0, 0),
+            token!(Block, ".", 0, 1),
+            token!(Port, "$", 0, 2),
+            token!(Identifier, "b", 0, 3)
+        ],
+        vec![ParserError::OutPortBlock("b".to_owned())],
+    )
+}

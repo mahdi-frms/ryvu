@@ -8,17 +8,17 @@ struct Translator {
     indexes:IndexMap
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Connection {
-    from: Identifier,
-    to: Identifier,
-    is_charge:bool
+    pub from: Identifier,
+    pub to: Identifier,
+    pub is_charge:bool
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct Identifier {
-    name:String,
-    kind:IdentKind,
+    pub name:String,
+    pub kind:IdentKind,
 }
 
 #[derive(Debug,PartialEq,Eq,Clone, Copy)]

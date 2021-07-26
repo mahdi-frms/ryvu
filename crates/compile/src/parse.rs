@@ -38,6 +38,7 @@ pub enum ParserError {
     UnexpectedToken(SourcePosition),
     UnexpectedEnd,
     IOMin,
+    OutPortBlock(String),
     InconstIdKind(String,IdentKind,IdentKind)
 }
 
@@ -160,13 +161,26 @@ impl Parser {
     }
 
     fn finalize(&mut self,io_min:bool) -> (Vec<Connection>,Vec<ParserError>){
-        if io_min && self.errors.len() == 0 && !self.check_io_min() {
-            self.errors.push(ParserError::IOMin);
+        if self.errors.len() == 0 {
+            if io_min && !self.check_io_min() {
+                self.errors.push(ParserError::IOMin);
+            }
+            self.check_output_block();
         }
+
         (
             std::mem::replace(&mut self.connections, vec![]),
             std::mem::replace(&mut self.errors, vec![])
         )
+    }
+
+    fn check_output_block(&mut self){
+        for i in 0..self.connections.len() {
+            let con = self.connections[i].clone();
+            if con.to.kind == IdentKind::OutPort && !con.is_charge {
+                self.err_output_block(con.to.name);
+            }
+        }
     }
 
     fn check_io_min(&self)->bool{
@@ -255,6 +269,10 @@ impl Parser {
 
     fn err_unexpected_token(&mut self,token:&Token){
         self.errors.push(ParserError::UnexpectedToken(token.position()))
+    }
+
+    fn err_output_block(&mut self,ident:String){
+        self.errors.push(ParserError::OutPortBlock(ident))
     }
 
     fn err_unexpected_end(&mut self){
