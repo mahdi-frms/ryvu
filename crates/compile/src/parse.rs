@@ -4,14 +4,14 @@ use crate::{lex::{SourcePosition, Token, TokenKind}, translate::{Connection, Ide
 
 #[derive(Default)]
 struct Parser{
-    tokens:Vec<Token>,
-    token_index:usize,
+    inverter:Inverter,
     connections:Vec<Connection>,
     buffer:ConBuf,
     errors:Vec<ParserError>,
     id_map:IdMap
 }
 
+#[derive(Default)]
 struct Inverter{
     tokens:Vec<Token>,
     index:usize,
@@ -25,6 +25,12 @@ enum InverterState {
     WasPort,
     WasIdent,
     WasEndl(Token)
+}
+
+impl Default for InverterState {
+    fn default() -> Self {
+        InverterState::Normal
+    }
 }
 
 impl Inverter {
@@ -44,17 +50,18 @@ impl Inverter {
             }
         }
         loop {
-            if self.tokens.len() == self.index {
-                return;
+            if self.tokens.len() <= self.index {
+                break;
             }
             let t = self.tokens[self.index].kind();
             if t == TokenKind::Semicolon || t == TokenKind::EndLine {
-                return;
+                break;
             }
             else {
                 self.index += 1;
             }
         }
+        self.state = InverterState::Normal;
     }
     fn expect(&mut self)-> Option<Token> {
         let t = self.peek();
@@ -136,10 +143,10 @@ pub fn parse(tokens:Vec<Token>,io_min:bool)->(Vec<Connection>,Vec<ParserError>) 
 impl Parser {
 
     fn parse(&mut self,tokens:Vec<Token>,io_min:bool) -> (Vec<Connection>,Vec<ParserError>) {
-        self.tokens = tokens;
+        self.inverter = Inverter::new(tokens);
         while let Some(_) = self.peek_token() {
             if self.expect_source() == None {
-                self.consume_end();
+                self.inverter.consume_end();
                 self.clear_buffer();
             }
         }
@@ -147,89 +154,47 @@ impl Parser {
     }
 
     fn expect_source(&mut self)->Option<()>{
-        self.consume_all(&[TokenKind::Space,TokenKind::EndLine,TokenKind::Semicolon]);
-        while let Some(token) = self.peek_token() {
-            match token.kind() {
-                TokenKind::Identifier | TokenKind::Port =>{
-                    self.expect_statement()?;
-                    self.consume_all(&[TokenKind::Space,TokenKind::EndLine]);
-                },
-                TokenKind::Semicolon=>{
-                    self.consume_token();
-                }
-                _=>{
-                    self.err_unexpected_token(&token);
-                    return None;
-                }
-            }
+        self.expect_statement()?;
+        while let Some(_) = self.peek(&[TokenKind::Semicolon,TokenKind::EndLine]) {
+            self.consume_token();
+            self.expect_statement()?;
         }
         Some(())
     }
 
     fn expect_statement(&mut self)->Option<()>{
-        self.expect_batch(OperatorKind::default())?;
-        self.consume_all(&[TokenKind::Space,TokenKind::EndLine]);
-        self.expect_opbch()?;
-        loop {
-            let pr = self.peek_token();
-            if pr == None {
-                break;
-            }
-            let token = pr.unwrap();
-            match token.kind() {
-                TokenKind::Charge | TokenKind::Block => self.expect_opbch()?,
-                TokenKind::EndLine =>{
-                    self.consume_all(&[TokenKind::Space,TokenKind::EndLine]);
-                    match self.peek_token() {
-                        None => break,
-                        Some(token) => match token.kind() {
-                            TokenKind::Identifier | TokenKind::Port => break,
-                            TokenKind::Charge | TokenKind::Block =>continue,
-                            _=>{
-                                self.err_unexpected_token(&token);
-                                return None;
-                            }
-                        }
-                    }
-                },
-                TokenKind::Semicolon =>{
-                    self.consume_token();
-                    break;
-                }
-                _=>{
-                    self.err_unexpected_token(&token);
-                    return None;
-                }
-            }
+        while let Some(_) = self.peek(&[TokenKind::Semicolon,TokenKind::EndLine]) {
+            self.consume_token();
         }
-        self.connect();
-        self.clear_buffer();
+        if let Some(_) = self.peek(&[TokenKind::Identifier,TokenKind::Port]) {
+            self.expect_batch(OperatorKind::default())?;
+            self.expect_operation()?;
+            while let Some(_) = self.peek(&[TokenKind::Charge,TokenKind::Block]) {    
+                self.expect_operation()?;
+            }
+            self.connect();
+            self.clear_buffer();   
+        }
         Some(())
+    }
+
+    fn expect_operation(&mut self) -> Option<()> {
+        let opr = self.expect(&[TokenKind::Charge,TokenKind::Block])?;
+        self.expect_batch(match opr.kind() {
+            TokenKind::Charge => OperatorKind::Charge,
+            TokenKind::Block => OperatorKind::Block,
+            _=>OperatorKind::default()
+        })
     }
 
     fn expect_batch(&mut self,operator_kind:OperatorKind)->Option<()>{
         let mut id = self.expect_id()?;
-        self.consume_all(&[TokenKind::Space]);
-       
         self.new_ident(id.0.as_str(), id.1, operator_kind);
-        while let Some(_) = self.peek(TokenKind::Comma) {
+        while let Some(_) = self.peek(&[TokenKind::Comma]) {
             self.consume_token();
-            self.consume_all(&[TokenKind::Space,TokenKind::EndLine]);
             id = self.expect_id()?;
-            self.consume_all(&[TokenKind::Space]);
             self.new_ident(id.0.as_str(), id.1, OperatorKind::Comma);
         }
-        Some(())
-    }
-
-    fn expect_opbch(&mut self)->Option<()>{
-        let op = self.expect(&[TokenKind::Charge,TokenKind::Block])?;
-        self.consume_all(&[TokenKind::Space,TokenKind::EndLine]);
-        self.expect_batch(match op.kind() {
-            TokenKind::Charge => OperatorKind::Charge,
-            TokenKind::Block => OperatorKind::Block,
-            _ => OperatorKind::default(),
-        })?;
         Some(())
     }
 
@@ -250,46 +215,22 @@ impl Parser {
         }
     }
 
-    fn consume_end(&mut self){
-        while let Some(token) = self.peek_token() {
-            self.consume_token();
-            if token.kind() == TokenKind::EndLine || token.kind() == TokenKind::Semicolon {
-                break;
-            }
-        }
-    }
-
-    fn consume_all(&mut self,skips:&[TokenKind]){
-        while let Some(token) = self.peek_token() {
-            if skips.contains(&token.kind()) {
-                self.consume_token();
-            }
-            else {
-                break;
-            }
-        }
-    }
-
     fn consume_token(&mut self){
-        self.token_index += 1;
+        self.inverter.expect();
     }
 
     fn expect_token(&mut self) -> Option<Token>{
-        let t = self.peek_token();
-        if t == None {
-            self.err_unexpected_end();
+        match self.inverter.expect() {
+            None => {
+                self.err_unexpected_end();
+                None
+            },
+            Some(token)=> Some(token)
         }
-        self.token_index += 1;
-        t
     }
 
     fn peek_token(&mut self) -> Option<Token>{
-        if self.token_index < self.tokens.len() {
-            Some(self.tokens[self.token_index].clone())
-        }
-        else{
-            None
-        }
+        self.inverter.peek()
     }
 
     fn expect(&mut self,kinds:&[TokenKind]) -> Option<Token>{
@@ -303,12 +244,12 @@ impl Parser {
         }
     }
 
-    fn peek(&mut self,kind:TokenKind) -> Option<Token>{
-        let t = self.peek_token()?;
-        if t.kind() == kind {
-            Some(t)
+    fn peek(&mut self,kinds:&[TokenKind]) -> Option<Token>{
+        let token = self.peek_token()?;
+        if kinds.contains(&token.kind()) {
+            Some(token)
         }
-        else{
+        else {
             None
         }
     }
