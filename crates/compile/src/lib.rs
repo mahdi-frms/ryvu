@@ -90,4 +90,25 @@ mod test{
         builder.block(0,1);
         compile_case("a . b", builder.build());
     }
+
+    #[test]
+    fn ending_semicolon() {
+        let mut builder = ModuleBuilder::default();
+        builder.charge(0,1);
+        compile_case("a > b;", builder.build());
+    }
+
+    #[test]
+    fn multiple_ending_semicolon() {
+        let mut builder = ModuleBuilder::default();
+        builder.charge(0,1);
+        compile_case("a > b;;;;", builder.build());
+    }
+
+    #[test]
+    fn multiple_preceding_semicolon() {
+        let mut builder = ModuleBuilder::default();
+        builder.charge(0,1);
+        compile_case(";;;a > b", builder.build());
+    }
 }
