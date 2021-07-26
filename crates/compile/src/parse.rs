@@ -27,88 +27,6 @@ enum InverterState {
     WasEndl(Token)
 }
 
-impl Default for InverterState {
-    fn default() -> Self {
-        InverterState::Normal
-    }
-}
-
-impl Inverter {
-    fn new(tokens:Vec<Token>) -> Inverter {
-        Inverter{
-            tokens,
-            state:InverterState::Normal,
-            index:0,
-            stack:vec![]
-        }
-    }
-    fn consume_end(&mut self){
-        while let Some(token) = self.stack.last().cloned() {
-            self.stack.pop();
-            if token.kind() == TokenKind::Semicolon || token.kind() == TokenKind::EndLine {
-                return;
-            }
-        }
-        loop {
-            if self.tokens.len() <= self.index {
-                break;
-            }
-            let t = self.tokens[self.index].kind();
-            if t == TokenKind::Semicolon || t == TokenKind::EndLine {
-                break;
-            }
-            else {
-                self.index += 1;
-            }
-        }
-        self.state = InverterState::Normal;
-    }
-    fn expect(&mut self)-> Option<Token> {
-        let t = self.peek();
-        self.stack.pop();
-        t
-    }
-    fn peek(&mut self) -> Option<Token> {
-        while self.index < self.tokens.len() && self.stack.is_empty() {
-            self.get();
-        }
-        return self.stack.last().cloned()
-    }
-    fn get(&mut self) {
-        let token = self.tokens[self.index].clone();
-        self.index += 1;
-        match token.kind() {
-            TokenKind::Charge | TokenKind::Block | TokenKind::Comma | TokenKind::Semicolon => {
-                self.state = InverterState::Normal;
-                self.stack.push(token);
-            },
-            TokenKind::Space => {
-                if self.state == InverterState::WasPort {
-                    self.stack.push(token);
-                    self.state = InverterState::Normal;
-                }
-            },
-            TokenKind::Port => {
-                self.state = InverterState::WasPort;
-                self.stack.push(token);
-            }
-            TokenKind::Identifier => {
-                self.stack.push(token);
-                match &self.state {
-                    InverterState::WasEndl(endl) => self.stack.push(endl.clone()),
-                    _=>{}
-                }
-                self.state = InverterState::WasIdent;
-            },
-            TokenKind::EndLine => {
-                if self.state == InverterState::WasIdent {
-                    self.state = InverterState::WasEndl(token);
-                }
-            }
-        }
-    }
-}
-
 #[derive(Default)]
 struct ConBuf {
     from:Vec<IdPair>,
@@ -361,9 +279,87 @@ impl Parser {
     }
 }
 
+impl Inverter {
+    fn new(tokens:Vec<Token>) -> Inverter {
+        Inverter{
+            tokens,
+            state:InverterState::Normal,
+            index:0,
+            stack:vec![]
+        }
+    }
+    fn consume_end(&mut self){
+        while let Some(token) = self.stack.last().cloned() {
+            self.stack.pop();
+            if token.kind() == TokenKind::Semicolon || token.kind() == TokenKind::EndLine {
+                return;
+            }
+        }
+        loop {
+            if self.tokens.len() <= self.index {
+                break;
+            }
+            let t = self.tokens[self.index].kind();
+            if t == TokenKind::Semicolon || t == TokenKind::EndLine {
+                break;
+            }
+            else {
+                self.index += 1;
+            }
+        }
+        self.state = InverterState::Normal;
+    }
+    fn expect(&mut self)-> Option<Token> {
+        let t = self.peek();
+        self.stack.pop();
+        t
+    }
+    fn peek(&mut self) -> Option<Token> {
+        while self.index < self.tokens.len() && self.stack.is_empty() {
+            self.get();
+        }
+        return self.stack.last().cloned()
+    }
+    fn get(&mut self) {
+        let token = self.tokens[self.index].clone();
+        self.index += 1;
+        match token.kind() {
+            TokenKind::Charge | TokenKind::Block | TokenKind::Comma | TokenKind::Semicolon => {
+                self.state = InverterState::Normal;
+                self.stack.push(token);
+            },
+            TokenKind::Space => if self.state == InverterState::WasPort {
+                self.stack.push(token);
+                self.state = InverterState::Normal;
+            },
+            TokenKind::Port => {
+                self.state = InverterState::WasPort;
+                self.stack.push(token);
+            }
+            TokenKind::Identifier => {
+                self.stack.push(token);
+                match &self.state {
+                    InverterState::WasEndl(endl) => self.stack.push(endl.clone()),
+                    _=>{}
+                }
+                self.state = InverterState::WasIdent;
+            },
+            TokenKind::EndLine => if self.state == InverterState::WasIdent {
+                self.state = InverterState::WasEndl(token);
+            }
+        }
+    }
+}
+
 impl Default for OperatorKind {
     fn default() -> Self {
         OperatorKind::Charge
+    }
+}
+
+impl Default for InverterState {
+    fn default() -> Self {
+        InverterState::Normal
     }
 }
 
