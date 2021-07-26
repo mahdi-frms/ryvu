@@ -77,11 +77,17 @@ mod test{
         compile_case("\n   ;;; \n\n \n ;;;  ;;; \n;\n  \n   \n\n\n   ", Module::default());
     }
 
-
     #[test]
     fn simple_charge() {
         let mut builder = ModuleBuilder::default();
         builder.charge(0,1);
         compile_case("a > b", builder.build());
+    }
+
+    #[test]
+    fn simple_block() {
+        let mut builder = ModuleBuilder::default();
+        builder.block(0,1);
+        compile_case("a . b", builder.build());
     }
 }
