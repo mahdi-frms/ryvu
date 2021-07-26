@@ -111,4 +111,25 @@ mod test{
         builder.charge(0,1);
         compile_case(";;;a > b", builder.build());
     }
+
+    #[test]
+    fn ending_endline() {
+        let mut builder = ModuleBuilder::default();
+        builder.block(0,1);
+        compile_case("a . b\n", builder.build());
+    }
+
+    #[test]
+    fn multiple_ending_endline() {
+        let mut builder = ModuleBuilder::default();
+        builder.block(0,1);
+        compile_case("a . b\n\n\n", builder.build());
+    }
+
+    #[test]
+    fn multiple_preceding_endline() {
+        let mut builder = ModuleBuilder::default();
+        builder.block(0,1);
+        compile_case("\n\n\n\na . b", builder.build());
+    }
 }
