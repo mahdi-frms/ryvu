@@ -12,6 +12,77 @@ struct Parser{
     id_map:IdMap
 }
 
+struct Inverter{
+    tokens:Vec<Token>,
+    index:usize,
+    state:InverterState,
+    stack:Vec<Token>
+}
+
+#[derive(PartialEq, Eq)]
+enum InverterState {
+    Normal,
+    WasPort,
+    WasIdent,
+    WasEndl(Token)
+}
+
+impl Inverter {
+    fn new(tokens:Vec<Token>) -> Inverter {
+        Inverter{
+            tokens,
+            state:InverterState::Normal,
+            index:0,
+            stack:vec![]
+        }
+    }
+    fn expect(&mut self)-> Option<Token> {
+        let t = self.peek();
+        self.stack.pop();
+        t
+    }
+    fn peek(&mut self) -> Option<Token> {
+        while self.index < self.tokens.len() && self.stack.is_empty() {
+            self.get();
+        }
+        return self.stack.last().cloned()
+    }
+    fn get(&mut self) {
+        let token = self.tokens[self.index].clone();
+        self.index += 1;
+        match token.kind() {
+            TokenKind::Charge | TokenKind::Block | TokenKind::Comma | TokenKind::Semicolon => {
+                self.state = InverterState::Normal;
+                self.stack.push(token);
+            },
+            TokenKind::Space => {
+                // self.index += 1;
+                if self.state == InverterState::WasPort {
+                    self.stack.push(token);
+                    self.state = InverterState::Normal;
+                }
+            },
+            TokenKind::Port => {
+                self.state = InverterState::WasPort;
+                self.stack.push(token);
+            }
+            TokenKind::Identifier => {
+                self.stack.push(token);
+                match &self.state {
+                    InverterState::WasEndl(endl) => self.stack.push(endl.clone()),
+                    _=>{}
+                }
+                self.state = InverterState::WasIdent;
+            },
+            TokenKind::EndLine => {
+                if self.state == InverterState::WasIdent {
+                    self.state = InverterState::WasEndl(token);
+                }
+            }
+        }
+    }
+}
+
 #[derive(Default)]
 struct ConBuf {
     from:Vec<IdPair>,
@@ -337,8 +408,180 @@ impl Default for OperatorKind {
 }
 
 #[cfg(test)]
-mod test {
-    use crate::{lex::{SourcePosition,Token}, translate::{Connection,IdentKind}, parse::{parse,ParserError}};
+mod test_inverter{
+    use crate::{lex::Token, parse::Inverter};
+
+    fn invertor_test_case(tokens:Vec<Token>,inverted:Vec<Token>){
+        let mut inv = Inverter::new(tokens);
+        let mut gen = vec![];
+        while let Some(token) = inv.expect() {
+            gen.push(token);
+        }
+        assert_eq!(gen,inverted);
+    }
+
+    #[test]
+    fn no_token(){
+        invertor_test_case(vec![], vec![]);
+    }
+
+    #[test]
+    fn simple_tokens(){
+        invertor_test_case(vec![
+            token!(Charge,">"),
+            token!(Block,"."),
+            token!(Comma,","),
+            token!(Semicolon,";")
+        ], vec![
+            token!(Charge,">"),
+            token!(Block,"."),
+            token!(Comma,","),
+            token!(Semicolon,";")
+        ]);
+    }
+
+
+
+    #[test]
+    fn space(){
+        invertor_test_case(vec![
+            token!(Space,"   "),
+            token!(Charge,">"),
+            token!(Block,"."),
+            token!(Comma,","),
+            token!(Space,"     "),
+            token!(Semicolon,";"),
+            token!(Space,"     ")
+        ], vec![
+            token!(Charge,">"),
+            token!(Block,"."),
+            token!(Comma,","),
+            token!(Semicolon,";")
+        ]);
+    }
+
+    #[test]
+    fn identifiers(){
+        invertor_test_case(vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ], vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ]);
+    }
+
+    #[test]
+    fn identifier_followed_by_endl(){
+        invertor_test_case(vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(EndLine,"\n"),
+            token!(Comma,","),
+        ], vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ]);
+    }
+
+    #[test]
+    fn endl_followed_by_identifier(){
+        invertor_test_case(vec![
+            token!(Block,"."),
+            token!(EndLine,"\n"),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ], vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ]);
+    }
+
+    #[test]
+    fn endl_surrounded_by_identifier(){
+        invertor_test_case(vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(EndLine,"\n"),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ], vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(EndLine,"\n"),
+            token!(Identifier,"s"),
+            token!(Comma,",")
+        ]);
+    }
+
+    #[test]
+    fn endl_surrounded_by_identifiers_and_spaces(){
+        invertor_test_case(vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(Space," "),
+            token!(Space,"    "),
+            token!(EndLine,"\n"),
+            token!(Space,"   "),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ], vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(EndLine,"\n"),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ]);
+    }
+
+    #[test]
+    fn port(){
+        invertor_test_case(vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(Space," "),
+            token!(Port,"$"),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ], vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(Port,"$"),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ]);
+    }
+
+    #[test]
+    fn space_after_port(){
+        invertor_test_case(vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(Space," "),
+            token!(Port,"$"),
+            token!(Space,"    "),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ], vec![
+            token!(Block,"."),
+            token!(Identifier,"s"),
+            token!(Port,"$"),
+            token!(Space,"    "),
+            token!(Identifier,"s"),
+            token!(Comma,","),
+        ]);
+    }
+}
+
+
+
+#[cfg(test)]
+mod test_parser {
+    use crate::{lex::{SourcePosition,Token}, translate::{Connection,IdentKind}, parse::{parse,ParserError,Inverter}};
 
     fn parser_test_case(tokens:Vec<Token>,connections:Vec<Connection>){
         let pr = parse(tokens,false);
@@ -359,6 +602,11 @@ mod test {
     fn parse_error_test_case_io_min(tokens:Vec<Token>,errors:Vec<ParserError>){
         let generated_errors = parse(tokens,true).1;
         assert_eq!(generated_errors,errors);
+    }
+
+    #[test]
+    fn empty(){
+        parser_test_case(vec![], vec![])
     }
 
     #[test]
