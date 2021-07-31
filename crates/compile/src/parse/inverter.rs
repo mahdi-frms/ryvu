@@ -25,21 +25,21 @@ impl Inverter {
         }
     }
     pub fn consume_end(&mut self) {
-        while let Some(token) = self.stack.last().cloned() {
-            self.stack.pop();
+        while let Some(token) = self.stack.pop() {
             if token.kind() == TokenKind::Semicolon || token.kind() == TokenKind::EndLine {
                 return;
             }
         }
         loop {
-            if self.tokens.len() <= self.index {
-                break;
-            }
-            let t = self.tokens[self.index].kind();
-            if t == TokenKind::Semicolon || t == TokenKind::EndLine {
-                break;
+            if let Some(token) = self.tokens.get(self.index) {
+                let t = token.kind();
+                if t == TokenKind::Semicolon || t == TokenKind::EndLine {
+                    break;
+                } else {
+                    self.index += 1;
+                }
             } else {
-                self.index += 1;
+                break;
             }
         }
         self.state = InverterState::Normal;
