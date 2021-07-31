@@ -1,6 +1,14 @@
 use crate::lex::{Token, TokenKind};
+
+pub trait Inverter {
+    fn new(tokens: Vec<Token>) -> Self;
+    fn consume_end(&mut self);
+    fn expect(&mut self) -> Option<Token>;
+    fn peek(&mut self) -> Option<Token>;
+}
+
 #[derive(Default)]
-pub struct Inverter {
+pub struct DefaultInverter {
     tokens: Vec<Token>,
     index: usize,
     state: InverterState,
@@ -15,46 +23,22 @@ enum InverterState {
     WasEndl(Token),
 }
 
-impl Inverter {
-    pub fn new(tokens: Vec<Token>) -> Inverter {
-        Inverter {
-            tokens,
-            state: InverterState::Normal,
-            index: 0,
-            stack: vec![],
-        }
-    }
-    pub fn consume_end(&mut self) {
-        while let Some(token) = self.stack.pop() {
-            if token.kind() == TokenKind::Semicolon || token.kind() == TokenKind::EndLine {
-                return;
-            }
-        }
-        loop {
-            if let Some(token) = self.tokens.get(self.index) {
-                let t = token.kind();
-                if t == TokenKind::Semicolon || t == TokenKind::EndLine {
-                    break;
-                } else {
-                    self.index += 1;
-                }
-            } else {
+fn consume_end(tokens: &mut Vec<Token>, index: &mut usize) {
+    loop {
+        if let Some(token) = tokens.get(*index) {
+            let t = token.kind();
+            if t == TokenKind::Semicolon || t == TokenKind::EndLine {
                 break;
+            } else {
+                *index += 1;
             }
+        } else {
+            break;
         }
-        self.state = InverterState::Normal;
     }
-    pub fn expect(&mut self) -> Option<Token> {
-        let t = self.peek();
-        self.stack.pop();
-        t
-    }
-    pub fn peek(&mut self) -> Option<Token> {
-        while self.index < self.tokens.len() && self.stack.is_empty() {
-            self.get();
-        }
-        return self.stack.last().cloned();
-    }
+}
+
+impl DefaultInverter {
     fn get(&mut self) {
         let token = self.tokens[self.index].clone();
         self.index += 1;
@@ -90,6 +74,37 @@ impl Inverter {
     }
 }
 
+impl Inverter for DefaultInverter {
+    fn new(tokens: Vec<Token>) -> DefaultInverter {
+        DefaultInverter {
+            tokens,
+            state: InverterState::Normal,
+            index: 0,
+            stack: vec![],
+        }
+    }
+    fn consume_end(&mut self) {
+        while let Some(token) = self.stack.pop() {
+            if token.kind() == TokenKind::Semicolon || token.kind() == TokenKind::EndLine {
+                return;
+            }
+        }
+        consume_end(&mut self.tokens, &mut self.index);
+        self.state = InverterState::Normal;
+    }
+    fn expect(&mut self) -> Option<Token> {
+        let t = self.peek();
+        self.stack.pop();
+        t
+    }
+    fn peek(&mut self) -> Option<Token> {
+        while self.index < self.tokens.len() && self.stack.is_empty() {
+            self.get();
+        }
+        return self.stack.last().cloned();
+    }
+}
+
 impl Default for InverterState {
     fn default() -> Self {
         InverterState::Normal
@@ -98,10 +113,13 @@ impl Default for InverterState {
 
 #[cfg(test)]
 mod test_inverter {
-    use crate::{lex::Token, parse::inverter::Inverter};
+    use crate::{
+        lex::Token,
+        parse::inverter::{DefaultInverter, Inverter},
+    };
 
     fn invertor_test_case(tokens: Vec<Token>, inverted: Vec<Token>) {
-        let mut inv = Inverter::new(tokens);
+        let mut inv = DefaultInverter::new(tokens);
         let mut gen = vec![];
         while let Some(token) = inv.expect() {
             gen.push(token);

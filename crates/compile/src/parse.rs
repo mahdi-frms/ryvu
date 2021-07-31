@@ -5,12 +5,15 @@ use crate::{
     lex::{SourcePosition, Token, TokenKind},
     translate::{Connection, IdentKind, Identifier},
 };
-use inverter::Inverter;
+use inverter::{DefaultInverter, Inverter};
 use std::collections::HashMap;
 
 #[derive(Default)]
-struct Parser {
-    inverter: Inverter,
+struct Parser<I>
+where
+    I: Inverter,
+{
+    inverter: I,
     connections: Vec<Connection>,
     buffer: ConBuf,
     errors: Vec<ParserError>,
@@ -46,12 +49,15 @@ pub enum ParserError {
 }
 
 pub fn parse(tokens: Vec<Token>, io_min: bool) -> (Vec<Connection>, Vec<ParserError>) {
-    Parser::default().parse(tokens, io_min)
+    Parser::<DefaultInverter>::default().parse(tokens, io_min)
 }
 
-impl Parser {
+impl<I> Parser<I>
+where
+    I: Inverter,
+{
     fn parse(&mut self, tokens: Vec<Token>, io_min: bool) -> (Vec<Connection>, Vec<ParserError>) {
-        self.inverter = Inverter::new(tokens);
+        self.inverter = I::new(tokens);
         while let Some(_) = self.peek_token() {
             if self.expect_source() == None {
                 self.inverter.consume_end();
