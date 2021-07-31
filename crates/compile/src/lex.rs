@@ -82,12 +82,11 @@ impl Lexer {
         for ch in source.chars() {
             if self.buffer_state == BufferState::Comment {
                 if ch == '\n' {
-                    self.push_comment();
+                    self.handle_endl();
                 } else {
                     self.buffer.push(ch)
                 }
-            }
-            if ch == ' ' {
+            } else if ch == ' ' {
                 self.handle_space();
             } else if [';', '.', '>', '$', ','].contains(&ch) {
                 self.handle_signs(ch);
@@ -151,6 +150,7 @@ impl Lexer {
     fn handle_endl(&mut self) {
         self.push_space();
         self.push_ident();
+        self.push_comment();
         self.tokens
             .push(token!(EndLine, "\n", self.line, self.char_index));
         self.line += 1;
@@ -159,6 +159,7 @@ impl Lexer {
     fn finalize(&mut self) -> (Vec<Token>, Vec<LexerError>) {
         self.push_space();
         self.push_ident();
+        self.push_comment();
         (
             std::mem::replace(&mut self.tokens, vec![]),
             std::mem::replace(&mut self.errors, vec![]),
@@ -461,5 +462,50 @@ mod test {
                 position: SourcePosition { line: 0, ch: 1 }
             }]
         );
+    }
+
+    #[test]
+    fn supports_comment() {
+        let source = "a > b # this is a comment";
+        let (tokens, errors) = lex(source);
+        assert_eq!(
+            tokens,
+            vec![
+                token!(Identifier, "a", 0, 0),
+                token!(Space, " ", 0, 1),
+                token!(Charge, ">", 0, 2),
+                token!(Space, " ", 0, 3),
+                token!(Identifier, "b", 0, 4),
+                token!(Space, " ", 0, 5),
+                token!(Comment, "# this is a comment", 0, 6)
+            ]
+        );
+        assert_eq!(errors, vec![]);
+    }
+    #[test]
+    fn supports_comment_only() {
+        let source = "# this is a comment";
+        let (tokens, errors) = lex(source);
+        assert_eq!(tokens, vec![token!(Comment, "# this is a comment")]);
+        assert_eq!(errors, vec![]);
+    }
+    #[test]
+    fn supports_comment_before_statement() {
+        let source = "# this is a comment\na > b ";
+        let (tokens, errors) = lex(source);
+        assert_eq!(
+            tokens,
+            vec![
+                token!(Comment, "# this is a comment", 0, 0),
+                token!(EndLine, "\n", 0, 19),
+                token!(Identifier, "a", 1, 0),
+                token!(Space, " ", 1, 1),
+                token!(Charge, ">", 1, 2),
+                token!(Space, " ", 1, 3),
+                token!(Identifier, "b", 1, 4),
+                token!(Space, " ", 1, 5),
+            ]
+        );
+        assert_eq!(errors, vec![]);
     }
 }
