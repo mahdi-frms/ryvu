@@ -23,7 +23,7 @@ enum InverterState {
     WasEndl(Token),
 }
 
-fn consume_end(tokens: &mut Vec<Token>, index: &mut usize) {
+pub fn consume_end(tokens: &mut Vec<Token>, index: &mut usize) {
     loop {
         if let Some(token) = tokens.get(*index) {
             let t = token.kind();

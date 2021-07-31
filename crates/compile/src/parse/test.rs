@@ -1,8 +1,32 @@
 use crate::{
     lex::{SourcePosition, Token},
-    parse::{parse, ParserError},
+    parse::{inverter::consume_end, parse, ParserError},
     translate::{Connection, IdentKind},
 };
+
+use super::inverter::Inverter;
+
+struct MockInverter {
+    tokens: Vec<Token>,
+    index: usize,
+}
+
+impl Inverter for MockInverter {
+    fn new(tokens: Vec<Token>) -> Self {
+        MockInverter { tokens, index: 0 }
+    }
+    fn peek(&mut self) -> Option<Token> {
+        self.tokens.get(self.index).cloned()
+    }
+    fn expect(&mut self) -> Option<Token> {
+        let t = self.tokens.get(self.index).cloned()?;
+        self.index += 1;
+        Some(t)
+    }
+    fn consume_end(&mut self) {
+        consume_end(&mut self.tokens, &mut self.index)
+    }
+}
 
 fn parser_test_case(tokens: Vec<Token>, connections: Vec<Connection>) {
     let pr = parse(tokens, false);
