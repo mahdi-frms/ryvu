@@ -14,6 +14,7 @@ enum BufferState {
     Ident,
     InvIdent,
     Empty,
+    Comment,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -45,6 +46,7 @@ pub enum TokenKind {
     Block,
     Semicolon,
     Comma,
+    Comment,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -78,10 +80,19 @@ pub fn lex(source: &str) -> (Vec<Token>, Vec<LexerError>) {
 impl Lexer {
     fn lex(&mut self, source: &str) -> (Vec<Token>, Vec<LexerError>) {
         for ch in source.chars() {
+            if self.buffer_state == BufferState::Comment {
+                if ch == '\n' {
+                    self.push_comment();
+                } else {
+                    self.buffer.push(ch)
+                }
+            }
             if ch == ' ' {
                 self.handle_space();
             } else if [';', '.', '>', '$', ','].contains(&ch) {
                 self.handle_signs(ch);
+            } else if ch == '#' {
+                self.handle_comment(ch);
             } else if Self::is_alphanumeric(ch) {
                 self.handle_ident(ch)
             } else if ch == '\n' {
@@ -131,6 +142,12 @@ impl Lexer {
         }
         self.buffer.push(ch);
     }
+    fn handle_comment(&mut self, ch: char) {
+        self.push_space();
+        self.push_ident();
+        self.buffer_state = BufferState::Comment;
+        self.buffer.push(ch);
+    }
     fn handle_endl(&mut self) {
         self.push_space();
         self.push_ident();
@@ -159,6 +176,11 @@ impl Lexer {
     fn push_space(&mut self) {
         if self.buffer_state == BufferState::Space {
             self.push_buffer(TokenKind::Space);
+        }
+    }
+    fn push_comment(&mut self) {
+        if self.buffer_state == BufferState::Comment {
+            self.push_buffer(TokenKind::Comment);
         }
     }
     fn push_ident(&mut self) {

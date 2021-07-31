@@ -70,6 +70,7 @@ impl DefaultInverter {
                     self.state = InverterState::WasEndl(token);
                 }
             }
+            _ => {}
         }
     }
 }
