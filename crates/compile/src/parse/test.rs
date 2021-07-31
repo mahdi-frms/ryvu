@@ -89,11 +89,11 @@ fn single_charge_same_node() {
 fn chained_statements() {
     parser_test_case(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Block, ".", 0, 4),
-            token!(Identifier, "b", 0, 7),
-            token!(Charge, ">", 0, 8),
-            token!(Identifier, "c", 0, 9),
+            token!(Identifier, "a"),
+            token!(Block, "."),
+            token!(Identifier, "b"),
+            token!(Charge, ">"),
+            token!(Identifier, "c"),
         ],
         vec![connection!(a.b), connection!(b > c)],
     )
@@ -103,11 +103,11 @@ fn chained_statements() {
 fn chained_statements_reoccurring_idents() {
     parser_test_case(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Block, ".", 0, 4),
-            token!(Identifier, "b", 0, 7),
-            token!(Charge, ">", 0, 8),
-            token!(Identifier, "a", 0, 9),
+            token!(Identifier, "a"),
+            token!(Block, "."),
+            token!(Identifier, "b"),
+            token!(Charge, ">"),
+            token!(Identifier, "a"),
         ],
         vec![connection!(a.b), connection!(b > a)],
     )
@@ -117,16 +117,16 @@ fn chained_statements_reoccurring_idents() {
 fn semicolon_statement_seperation() {
     parser_test_case(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Block, ".", 0, 4),
-            token!(Identifier, "b", 0, 7),
-            token!(Charge, ">", 0, 8),
-            token!(Identifier, "c", 0, 9),
-            token!(Semicolon, ";", 0, 10),
-            token!(Identifier, "a", 0, 12),
-            token!(Charge, ">", 0, 13),
-            token!(Identifier, "d", 0, 14),
-            token!(Semicolon, ";", 0, 15),
+            token!(Identifier, "a"),
+            token!(Block, "."),
+            token!(Identifier, "b"),
+            token!(Charge, ">"),
+            token!(Identifier, "c"),
+            token!(Semicolon, ";"),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Identifier, "d"),
+            token!(Semicolon, ";"),
         ],
         vec![connection!(a.b), connection!(b > c), connection!(a > d)],
     )
@@ -136,16 +136,16 @@ fn semicolon_statement_seperation() {
 fn passes_on_sequential_identifiers() {
     parse_test_case_force_output(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Block, ".", 0, 4),
-            token!(Identifier, "b", 0, 7),
-            token!(Semicolon, ";", 0, 8),
-            token!(Identifier, "c", 0, 9),
-            token!(Identifier, "a", 0, 12),
-            token!(Semicolon, ";", 0, 13),
-            token!(Identifier, "a", 0, 14),
-            token!(Charge, ">", 0, 15),
-            token!(Identifier, "a", 0, 16),
+            token!(Identifier, "a"),
+            token!(Block, "."),
+            token!(Identifier, "b"),
+            token!(Semicolon, ";"),
+            token!(Identifier, "c"),
+            token!(Identifier, "a"),
+            token!(Semicolon, ";"),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Identifier, "a"),
         ],
         vec![connection!(a.b), connection!(a > a)],
     )
@@ -155,18 +155,18 @@ fn passes_on_sequential_identifiers() {
 fn error_on_sequential_identifiers() {
     parse_error_test_case(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Block, ".", 0, 4),
-            token!(Identifier, "b", 0, 7),
-            token!(Semicolon, ";", 0, 8),
-            token!(Identifier, "c", 0, 9),
-            token!(Identifier, "a", 0, 12),
-            token!(Semicolon, ";", 0, 13),
-            token!(Identifier, "a", 0, 14),
-            token!(Charge, ">", 0, 15),
-            token!(Identifier, "a", 0, 16),
+            token!(Identifier, "a"),
+            token!(Block, "."),
+            token!(Identifier, "b"),
+            token!(Semicolon, ";"),
+            token!(Identifier, "c"),
+            token!(Identifier, "a", 0, 1),
+            token!(Semicolon, ";"),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Identifier, "a"),
         ],
-        vec![ParserError::UnexpectedToken(SourcePosition::new(0, 12))],
+        vec![ParserError::UnexpectedToken(SourcePosition::new(0, 1))],
     )
 }
 
@@ -174,9 +174,9 @@ fn error_on_sequential_identifiers() {
 fn ignores_endline_in_statements() {
     parser_test_case(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Block, ".", 0, 2),
-            token!(Identifier, "b", 0, 4),
+            token!(Identifier, "a"),
+            token!(Block, "."),
+            token!(Identifier, "b"),
         ],
         vec![connection!(a.b)],
     )
@@ -186,13 +186,13 @@ fn ignores_endline_in_statements() {
 fn endline_terminates_statement() {
     parser_test_case(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Block, ".", 0, 2),
-            token!(Identifier, "b", 0, 4),
-            token!(EndLine, "\n", 0, 5),
-            token!(Identifier, "a", 1, 0),
-            token!(Charge, ">", 1, 1),
-            token!(Identifier, "c", 1, 2),
+            token!(Identifier, "a"),
+            token!(Block, "."),
+            token!(Identifier, "b"),
+            token!(EndLine, "\n"),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Identifier, "c"),
         ],
         vec![connection!(a.b), connection!(a > c)],
     )
@@ -202,13 +202,13 @@ fn endline_terminates_statement() {
 fn endline_recovers_after_error() {
     parse_test_case_force_output(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Block, ".", 0, 1),
-            token!(Block, ".", 0, 2),
-            token!(EndLine, "\n", 0, 3),
-            token!(Identifier, "a", 1, 0),
-            token!(Charge, ">", 1, 1),
-            token!(Identifier, "c", 1, 2),
+            token!(Identifier, "a"),
+            token!(Block, "."),
+            token!(Block, "."),
+            token!(EndLine, "\n"),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Identifier, "c"),
         ],
         vec![connection!(a > c)],
     )
@@ -217,7 +217,7 @@ fn endline_recovers_after_error() {
 #[test]
 fn error_on_unexpected_end() {
     parse_error_test_case(
-        vec![token!(Identifier, "a", 0, 0), token!(Block, ".", 0, 1)],
+        vec![token!(Identifier, "a"), token!(Block, ".")],
         vec![ParserError::UnexpectedEnd],
     )
 }
@@ -226,10 +226,10 @@ fn error_on_unexpected_end() {
 fn input_ports() {
     parser_test_case(
         vec![
-            token!(Port, "$", 0, 0),
-            token!(Identifier, "a", 0, 1),
-            token!(Charge, ">", 0, 2),
-            token!(Identifier, "b", 0, 5),
+            token!(Port, "$"),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Identifier, "b"),
         ],
         vec![connection!(!a > b)],
     )
@@ -239,11 +239,11 @@ fn input_ports() {
 fn error_port_notfollewedby_ident() {
     parse_error_test_case(
         vec![
-            token!(Port, "$", 0, 0),
+            token!(Port, "$"),
             token!(Space, " ", 0, 1),
-            token!(Identifier, "a", 0, 2),
-            token!(Charge, ">", 0, 3),
-            token!(Identifier, "b", 0, 6),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Identifier, "b"),
         ],
         vec![ParserError::UnexpectedToken(SourcePosition::new(0, 1))],
     )
@@ -253,10 +253,10 @@ fn error_port_notfollewedby_ident() {
 fn output_ports() {
     parser_test_case(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Charge, ">", 0, 1),
-            token!(Port, "$", 0, 2),
-            token!(Identifier, "b", 0, 3),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Port, "$"),
+            token!(Identifier, "b"),
         ],
         vec![connection!(a > !b)],
     )
@@ -266,21 +266,21 @@ fn output_ports() {
 fn error_inconsistant_ident_type() {
     parse_error_test_case(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Charge, ">", 0, 1),
-            token!(Port, "$", 0, 2),
-            token!(Identifier, "b", 0, 3),
-            token!(Semicolon, ";", 0, 4),
-            token!(Port, "$", 0, 5),
-            token!(Identifier, "b", 0, 6),
-            token!(Charge, ">", 0, 7),
-            token!(Port, "$", 0, 8),
-            token!(Identifier, "a", 0, 9),
-            token!(Semicolon, ";", 0, 10),
-            token!(Port, "$", 0, 11),
-            token!(Identifier, "a", 0, 12),
-            token!(Charge, ">", 0, 13),
-            token!(Identifier, "c", 0, 14),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Port, "$"),
+            token!(Identifier, "b"),
+            token!(Semicolon, ";"),
+            token!(Port, "$"),
+            token!(Identifier, "b"),
+            token!(Charge, ">"),
+            token!(Port, "$"),
+            token!(Identifier, "a"),
+            token!(Semicolon, ";"),
+            token!(Port, "$"),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Identifier, "c"),
         ],
         vec![
             ParserError::InconstIdKind("b".to_owned(), IdentKind::InPort, IdentKind::OutPort),
@@ -421,11 +421,11 @@ fn operater_at_next_line() {
 fn unexpected_token_after_opr() {
     parse_error_test_case(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Charge, ">", 0, 1),
-            token!(Block, ".", 0, 2),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Block, ".", 0, 1),
         ],
-        vec![ParserError::UnexpectedToken(SourcePosition::new(0, 2))],
+        vec![ParserError::UnexpectedToken(SourcePosition::new(0, 1))],
     )
 }
 
@@ -433,9 +433,9 @@ fn unexpected_token_after_opr() {
 fn unexpected_token_after_port_sign() {
     parse_error_test_case(
         vec![
-            token!(Port, "$", 0, 0),
+            token!(Port, "$"),
             token!(Charge, ">", 0, 1),
-            token!(Block, ".", 0, 2),
+            token!(Block, "."),
         ],
         vec![ParserError::UnexpectedToken(SourcePosition::new(0, 1))],
     )
@@ -445,11 +445,11 @@ fn unexpected_token_after_port_sign() {
 fn io_min_violation_wihout_basic_errors() {
     parse_error_test_case_io_min(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Charge, ">", 0, 1),
-            token!(Block, ".", 0, 2),
+            token!(Identifier, "a"),
+            token!(Charge, ">"),
+            token!(Block, ".", 0, 1),
         ],
-        vec![ParserError::UnexpectedToken(SourcePosition::new(0, 2))],
+        vec![ParserError::UnexpectedToken(SourcePosition::new(0, 1))],
     )
 }
 
@@ -457,10 +457,10 @@ fn io_min_violation_wihout_basic_errors() {
 fn outport_block_violation() {
     parse_error_test_case(
         vec![
-            token!(Identifier, "a", 0, 0),
-            token!(Block, ".", 0, 1),
-            token!(Port, "$", 0, 2),
-            token!(Identifier, "b", 0, 3),
+            token!(Identifier, "a"),
+            token!(Block, "."),
+            token!(Port, "$"),
+            token!(Identifier, "b"),
         ],
         vec![ParserError::OutPortBlock("b".to_owned())],
     )
