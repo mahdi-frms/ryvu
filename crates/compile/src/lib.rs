@@ -1,8 +1,8 @@
 use lex::lex;
 pub use lex::LexerError;
+use module::Module;
 use parse::parse;
 pub use parse::ParserError;
-use module::Module;
 use translate::translate;
 
 #[macro_use]
@@ -12,54 +12,53 @@ mod translate;
 mod parse;
 
 pub struct CompilationResult {
-    pub module:Option<Module>,
-    pub success:bool,
-    pub perrors:Vec<ParserError>,
-    pub lerrors:Vec<LexerError>,
-    pub input_ids:Option<Vec<String>>,
-    pub output_ids:Option<Vec<String>>
+    pub module: Option<Module>,
+    pub success: bool,
+    pub perrors: Vec<ParserError>,
+    pub lerrors: Vec<LexerError>,
+    pub input_ids: Option<Vec<String>>,
+    pub output_ids: Option<Vec<String>>,
 }
 
-pub fn compile(source:&str,gen_ids:bool,io_min:bool)-> CompilationResult {
-    let (tokens,lexer_error) = lex(source);
-    let (connections,parser_error) = parse(tokens,io_min);
+pub fn compile(source: &str, gen_ids: bool, io_min: bool) -> CompilationResult {
+    let (tokens, lexer_error) = lex(source);
+    let (connections, parser_error) = parse(tokens, io_min);
     if lexer_error.len() > 0 || parser_error.len() > 0 {
-        CompilationResult{
-            module:None,
-            success:false,
-            perrors:parser_error,
-            lerrors:lexer_error,
-            input_ids:None,
-            output_ids:None
+        CompilationResult {
+            module: None,
+            success: false,
+            perrors: parser_error,
+            lerrors: lexer_error,
+            input_ids: None,
+            output_ids: None,
         }
-    }
-    else{
-        let tr = translate(connections,gen_ids);
-        let (input_ids,output_ids) = match tr.identifiers {
-            Some((ins ,outs))=>(Some(ins),Some(outs)),
-            None=>(None,None)
+    } else {
+        let tr = translate(connections, gen_ids);
+        let (input_ids, output_ids) = match tr.identifiers {
+            Some((ins, outs)) => (Some(ins), Some(outs)),
+            None => (None, None),
         };
-        CompilationResult{
-            module:Some(tr.module),
-            success:true,
-            perrors:vec![],
-            lerrors:vec![],
+        CompilationResult {
+            module: Some(tr.module),
+            success: true,
+            perrors: vec![],
+            lerrors: vec![],
             input_ids,
-            output_ids
+            output_ids,
         }
     }
 }
 
 #[cfg(test)]
-mod test{
+mod test {
 
     use module::ModuleBuilder;
 
-    use crate::{Module,compile};
+    use crate::{compile, Module};
 
-    fn compile_case(source:&str,module:Module){
-        let cr = compile(source,false,false);
-        assert_eq!(cr.module.expect("no module provided!"),module);
+    fn compile_case(source: &str, module: Module) {
+        let cr = compile(source, false, false);
+        assert_eq!(cr.module.expect("no module provided!"), module);
     }
 
     #[test]
@@ -74,70 +73,72 @@ mod test{
 
     #[test]
     fn space_nextline_semic_only() {
-        compile_case("\n   ;;; \n\n \n ;;;  ;;; \n;\n  \n   \n\n\n   ", Module::default());
+        compile_case(
+            "\n   ;;; \n\n \n ;;;  ;;; \n;\n  \n   \n\n\n   ",
+            Module::default(),
+        );
     }
 
     #[test]
     fn simple_charge() {
         let mut builder = ModuleBuilder::default();
-        builder.charge(0,1);
+        builder.charge(0, 1);
         compile_case("a > b", builder.build());
     }
 
     #[test]
     fn simple_block() {
         let mut builder = ModuleBuilder::default();
-        builder.block(0,1);
+        builder.block(0, 1);
         compile_case("a . b", builder.build());
     }
 
     #[test]
     fn ending_semicolon() {
         let mut builder = ModuleBuilder::default();
-        builder.charge(0,1);
+        builder.charge(0, 1);
         compile_case("a > b;", builder.build());
     }
 
     #[test]
     fn multiple_ending_semicolon() {
         let mut builder = ModuleBuilder::default();
-        builder.charge(0,1);
+        builder.charge(0, 1);
         compile_case("a > b;;;;", builder.build());
     }
 
     #[test]
     fn multiple_preceding_semicolon() {
         let mut builder = ModuleBuilder::default();
-        builder.charge(0,1);
+        builder.charge(0, 1);
         compile_case(";;;a > b", builder.build());
     }
 
     #[test]
     fn ending_endline() {
         let mut builder = ModuleBuilder::default();
-        builder.block(0,1);
+        builder.block(0, 1);
         compile_case("a . b\n", builder.build());
     }
 
     #[test]
     fn multiple_ending_endline() {
         let mut builder = ModuleBuilder::default();
-        builder.block(0,1);
+        builder.block(0, 1);
         compile_case("a . b\n\n\n", builder.build());
     }
 
     #[test]
     fn multiple_preceding_endline() {
         let mut builder = ModuleBuilder::default();
-        builder.block(0,1);
+        builder.block(0, 1);
         compile_case("\n\n\n\na . b", builder.build());
     }
-
 
     #[test]
     fn multiple_endline_semicolon() {
         let mut builder = ModuleBuilder::default();
-        builder.block(0,1);
+        builder.block(0, 1);
         compile_case("\n\n  \n;;\na  . b;\n\n;;; \n;\n", builder.build());
     }
 }

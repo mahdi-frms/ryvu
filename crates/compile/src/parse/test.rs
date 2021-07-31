@@ -486,7 +486,7 @@ fn outport_block_violation() {
             token!(Identifier, "a", 0, 0),
             token!(Block, ".", 0, 1),
             token!(Port, "$", 0, 2),
-            token!(Identifier, "b", 0, 3)
+            token!(Identifier, "b", 0, 3),
         ],
         vec![ParserError::OutPortBlock("b".to_owned())],
     )

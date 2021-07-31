@@ -1,35 +1,31 @@
-pub use module::{Module,ModuleBuilder};
+pub use module::{Module, ModuleBuilder};
 
 pub struct Network {
-    module:Module,
-    states:Vec<NodeState>
+    module: Module,
+    states: Vec<NodeState>,
 }
 
 #[derive(Default)]
-struct NodeState (u8);
+struct NodeState(u8);
 
 impl Network {
-
-    pub fn new(module:Module)-> Network {
+    pub fn new(module: Module) -> Network {
         let mut states = vec![];
         for _ in 0..module.connections.len() {
             states.push(NodeState::default());
         }
-        Network {
-            module,
-            states
-        }
+        Network { module, states }
     }
 
-    pub fn charge(&mut self,index:usize) {
-        self.states[index].set_charged(true);        
+    pub fn charge(&mut self, index: usize) {
+        self.states[index].set_charged(true);
     }
 
-    pub fn seek(&self,index:usize) -> bool{
+    pub fn seek(&self, index: usize) -> bool {
         self.states[index].get_charged()
     }
-    
-    pub fn next(&mut self){
+
+    pub fn next(&mut self) {
         for index in 0..self.states.len() {
             if self.states[index].get_charged() && !self.states[index].get_blocked() {
                 for other_index in self.module.connections[index].charging.iter() {
@@ -52,56 +48,51 @@ impl Network {
 }
 
 impl NodeState {
-
-    fn set_charged(&mut self,value:bool){
+    fn set_charged(&mut self, value: bool) {
         if value {
             self.0 |= 0b0001;
-        }
-        else{
+        } else {
             self.0 &= 0b1110;
         }
     }
 
-    fn set_blocked(&mut self,value:bool){
+    fn set_blocked(&mut self, value: bool) {
         if value {
             self.0 |= 0b0010;
-        }
-        else{
+        } else {
             self.0 &= 0b1101;
         }
     }
 
-    fn set_being_charged(&mut self,value:bool){
+    fn set_being_charged(&mut self, value: bool) {
         if value {
             self.0 |= 0b0100;
-        }
-        else{
+        } else {
             self.0 &= 0b1011;
         }
     }
 
-    fn set_being_blocked(&mut self,value:bool){
+    fn set_being_blocked(&mut self, value: bool) {
         if value {
             self.0 |= 0b1000;
-        }
-        else{
+        } else {
             self.0 &= 0b0111;
         }
     }
 
-    fn get_charged(&self)->bool {
+    fn get_charged(&self) -> bool {
         self.0 % 2 == 0b0001
     }
 
-    fn get_blocked(&self)->bool {
+    fn get_blocked(&self) -> bool {
         self.0 % 4 >= 0b0010
     }
 
-    fn get_being_charged(&self)->bool {
+    fn get_being_charged(&self) -> bool {
         self.0 % 8 >= 0b0100
     }
 
-    fn get_being_blocked(&self)->bool {
+    fn get_being_blocked(&self) -> bool {
         self.0 % 16 >= 0b1000
     }
 }
@@ -111,7 +102,6 @@ mod test {
     use crate::network::ModuleBuilder;
     use crate::network::Network;
 
-    
     #[test]
     fn input_charging() {
         let mut builder = ModuleBuilder::default();
@@ -121,7 +111,7 @@ mod test {
         network.charge(0);
         network.next();
         let charged = network.seek(1);
-        
+
         assert!(charged);
     }
 
@@ -134,7 +124,7 @@ mod test {
         network.charge(0);
         network.next();
         let charged = network.seek(0);
-        
+
         assert!(!charged);
     }
 
@@ -152,12 +142,9 @@ mod test {
         network.next();
         network.next();
         let charged = network.seek(3);
-        let discharged = 
-        !network.seek(0) && 
-        !network.seek(1) && 
-        !network.seek(2) && 
-        !network.seek(4);
-        
+        let discharged =
+            !network.seek(0) && !network.seek(1) && !network.seek(2) && !network.seek(4);
+
         assert!(charged && discharged);
     }
 
