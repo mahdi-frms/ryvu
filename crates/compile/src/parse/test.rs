@@ -33,7 +33,7 @@ impl Inverter for MockInverter {
 fn parse(tokens: Vec<Token>, io_min: bool) -> (Vec<Connection>, Vec<ParserError>) {
     let mut parser = Parser::<MockInverter>::default();
     let pr = parser.parse(tokens, io_min);
-    (pr.0 .0, pr.1)
+    (pr.0, pr.1)
 }
 
 fn parser_test_case(tokens: Vec<Token>, connections: Vec<Connection>) {

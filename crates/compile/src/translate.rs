@@ -170,16 +170,16 @@ impl Debug for ConVec {
     }
 }
 
-pub fn translate(connections: ConVec, idents: bool) -> TranslationResult {
+pub fn translate(connections: Vec<Connection>, idents: bool) -> TranslationResult {
     Translator::default().translate(connections, idents)
 }
 
 impl Translator {
-    fn translate(&mut self, connections: ConVec, idents: bool) -> TranslationResult {
+    fn translate(&mut self, connections: Vec<Connection>, idents: bool) -> TranslationResult {
         let mut input_ids = vec![];
         let mut output_ids = vec![];
         let mut builder = ModuleBuilder::default();
-        for con in connections.0.iter() {
+        for con in connections.iter() {
             let (from_idx, from_new) = self.index(&con.from);
             let (to_idx, to_new) = self.index(&con.to);
 
@@ -237,11 +237,11 @@ impl Identifier {
 #[cfg(test)]
 mod test {
 
-    use crate::translate::{translate, ConVec, Connection, Module};
+    use crate::translate::{translate, Connection, Module};
     use module::ModuleBuilder;
 
     fn translate_test_case(connections: Vec<Connection>, module: Module) {
-        let translation_result = translate(ConVec(connections), false);
+        let translation_result = translate(connections, false);
         assert_eq!(translation_result.module, module);
     }
     fn translate_test_case_ids(
@@ -249,7 +249,7 @@ mod test {
         inputs: Vec<&str>,
         outputs: Vec<&str>,
     ) {
-        let translation_result = translate(ConVec(connections), true);
+        let translation_result = translate(connections, true);
         let (tr_ins, tr_outs) = translation_result.identifiers.unwrap();
         assert_eq!(
             tr_ins,

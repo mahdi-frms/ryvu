@@ -48,7 +48,7 @@ pub enum ParserError {
     InconstIdKind(String, IdentKind, IdentKind),
 }
 
-pub fn parse(tokens: Vec<Token>, io_min: bool) -> (ConVec, Vec<ParserError>) {
+pub fn parse(tokens: Vec<Token>, io_min: bool) -> (Vec<Connection>, Vec<ParserError>) {
     Parser::<DefaultInverter>::default().parse(tokens, io_min)
 }
 
@@ -56,7 +56,7 @@ impl<I> Parser<I>
 where
     I: Inverter,
 {
-    fn parse(&mut self, tokens: Vec<Token>, io_min: bool) -> (ConVec, Vec<ParserError>) {
+    fn parse(&mut self, tokens: Vec<Token>, io_min: bool) -> (Vec<Connection>, Vec<ParserError>) {
         self.inverter = I::new(tokens);
         while let Some(_) = self.peek_token() {
             if self.expect_source() == None {
@@ -164,7 +164,7 @@ where
         }
     }
 
-    fn finalize(&mut self, io_min: bool) -> (ConVec, Vec<ParserError>) {
+    fn finalize(&mut self, io_min: bool) -> (Vec<Connection>, Vec<ParserError>) {
         if self.errors.len() == 0 {
             if io_min && !self.check_io_min() {
                 self.errors.push(ParserError::IOMin);
@@ -173,7 +173,7 @@ where
         }
 
         (
-            std::mem::take(&mut self.connections),
+            std::mem::take(&mut self.connections).0,
             std::mem::take(&mut self.errors),
         )
     }
