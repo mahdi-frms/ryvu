@@ -1,5 +1,5 @@
 use module::{Module, ModuleBuilder};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
 
 type IndexMap = HashMap<String, usize>;
 
@@ -8,7 +8,7 @@ struct Translator {
     indexes: IndexMap,
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Connection {
     pub from: Identifier,
     pub to: Identifier,
@@ -32,6 +32,9 @@ pub struct TranslationResult {
     pub module: Module,
     pub identifiers: Option<(Vec<String>, Vec<String>)>,
 }
+
+#[derive(Default, PartialEq, Eq)]
+pub struct ConVec(pub Vec<Connection>);
 
 #[allow(unused_macros)]
 macro_rules! connection {
@@ -141,16 +144,42 @@ macro_rules! connection {
     };
 }
 
-pub fn translate(connections: Vec<Connection>, idents: bool) -> TranslationResult {
+impl Debug for ConVec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for c in self.0.iter() {
+            let from_sign = if c.from.kind == IdentKind::InPort {
+                "!"
+            } else {
+                ""
+            };
+            let from_name = c.from.name.as_str();
+            let opr_sign = if c.is_charge { ">" } else { "." };
+            let to_sign = if c.to.kind == IdentKind::OutPort {
+                "!"
+            } else {
+                ""
+            };
+            let to_name = c.to.name.as_str();
+            writeln!(
+                f,
+                "{}{}{}{}{}",
+                from_sign, from_name, opr_sign, to_sign, to_name
+            )?
+        }
+        Ok(())
+    }
+}
+
+pub fn translate(connections: ConVec, idents: bool) -> TranslationResult {
     Translator::default().translate(connections, idents)
 }
 
 impl Translator {
-    fn translate(&mut self, connections: Vec<Connection>, idents: bool) -> TranslationResult {
+    fn translate(&mut self, connections: ConVec, idents: bool) -> TranslationResult {
         let mut input_ids = vec![];
         let mut output_ids = vec![];
         let mut builder = ModuleBuilder::default();
-        for con in connections.iter() {
+        for con in connections.0.iter() {
             let (from_idx, from_new) = self.index(&con.from);
             let (to_idx, to_new) = self.index(&con.to);
 
@@ -208,11 +237,11 @@ impl Identifier {
 #[cfg(test)]
 mod test {
 
-    use crate::translate::{translate, Connection, Module};
+    use crate::translate::{translate, ConVec, Connection, Module};
     use module::ModuleBuilder;
 
     fn translate_test_case(connections: Vec<Connection>, module: Module) {
-        let translation_result = translate(connections, false);
+        let translation_result = translate(ConVec(connections), false);
         assert_eq!(translation_result.module, module);
     }
     fn translate_test_case_ids(
@@ -220,7 +249,7 @@ mod test {
         inputs: Vec<&str>,
         outputs: Vec<&str>,
     ) {
-        let translation_result = translate(connections, true);
+        let translation_result = translate(ConVec(connections), true);
         let (tr_ins, tr_outs) = translation_result.identifiers.unwrap();
         assert_eq!(
             tr_ins,

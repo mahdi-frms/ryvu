@@ -3,7 +3,7 @@ mod inverter;
 mod test;
 use crate::{
     lex::{SourcePosition, Token, TokenKind},
-    translate::{Connection, IdentKind, Identifier},
+    translate::{ConVec, Connection, IdentKind, Identifier},
 };
 use inverter::{DefaultInverter, Inverter};
 use std::collections::HashMap;
@@ -14,7 +14,7 @@ where
     I: Inverter,
 {
     inverter: I,
-    connections: Vec<Connection>,
+    connections: ConVec,
     buffer: ConBuf,
     errors: Vec<ParserError>,
     id_map: IdMap,
@@ -48,7 +48,7 @@ pub enum ParserError {
     InconstIdKind(String, IdentKind, IdentKind),
 }
 
-pub fn parse(tokens: Vec<Token>, io_min: bool) -> (Vec<Connection>, Vec<ParserError>) {
+pub fn parse(tokens: Vec<Token>, io_min: bool) -> (ConVec, Vec<ParserError>) {
     Parser::<DefaultInverter>::default().parse(tokens, io_min)
 }
 
@@ -56,7 +56,7 @@ impl<I> Parser<I>
 where
     I: Inverter,
 {
-    fn parse(&mut self, tokens: Vec<Token>, io_min: bool) -> (Vec<Connection>, Vec<ParserError>) {
+    fn parse(&mut self, tokens: Vec<Token>, io_min: bool) -> (ConVec, Vec<ParserError>) {
         self.inverter = I::new(tokens);
         while let Some(_) = self.peek_token() {
             if self.expect_source() == None {
@@ -164,7 +164,7 @@ where
         }
     }
 
-    fn finalize(&mut self, io_min: bool) -> (Vec<Connection>, Vec<ParserError>) {
+    fn finalize(&mut self, io_min: bool) -> (ConVec, Vec<ParserError>) {
         if self.errors.len() == 0 {
             if io_min && !self.check_io_min() {
                 self.errors.push(ParserError::IOMin);
@@ -173,14 +173,14 @@ where
         }
 
         (
-            std::mem::replace(&mut self.connections, vec![]),
-            std::mem::replace(&mut self.errors, vec![]),
+            std::mem::take(&mut self.connections),
+            std::mem::take(&mut self.errors),
         )
     }
 
     fn check_output_block(&mut self) {
-        for i in 0..self.connections.len() {
-            let con = self.connections[i].clone();
+        for i in 0..self.connections.0.len() {
+            let con = self.connections.0[i].clone();
             if con.to.kind == IdentKind::OutPort && !con.is_charge {
                 self.err_output_block(con.to.name);
             }
@@ -240,6 +240,7 @@ where
         let from = Identifier::new(from.0, from_kind);
         let to = Identifier::new(to.0, to_kind);
         self.connections
+            .0
             .push(Connection::new(from, to, self.buffer.is_charge));
     }
 

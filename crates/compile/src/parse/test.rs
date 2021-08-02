@@ -4,7 +4,7 @@ use crate::{
         inverter::{consume_end, Inverter},
         Parser, ParserError,
     },
-    translate::{Connection, IdentKind},
+    translate::{ConVec, Connection, IdentKind},
 };
 
 #[derive(Default)]
@@ -32,13 +32,14 @@ impl Inverter for MockInverter {
 
 fn parse(tokens: Vec<Token>, io_min: bool) -> (Vec<Connection>, Vec<ParserError>) {
     let mut parser = Parser::<MockInverter>::default();
-    parser.parse(tokens, io_min)
+    let pr = parser.parse(tokens, io_min);
+    (pr.0 .0, pr.1)
 }
 
 fn parser_test_case(tokens: Vec<Token>, connections: Vec<Connection>) {
     let pr = parse(tokens, false);
     assert_eq!(pr.1, vec![]);
-    assert_eq!(pr.0, connections);
+    assert_eq!(ConVec(pr.0), ConVec(connections));
 }
 
 fn parse_error_test_case(tokens: Vec<Token>, errors: Vec<ParserError>) {
@@ -48,7 +49,7 @@ fn parse_error_test_case(tokens: Vec<Token>, errors: Vec<ParserError>) {
 
 fn parse_test_case_force_output(tokens: Vec<Token>, connections: Vec<Connection>) {
     let generated_connections = parse(tokens, false).0;
-    assert_eq!(generated_connections, connections);
+    assert_eq!(ConVec(generated_connections), ConVec(connections));
 }
 
 fn parse_error_test_case_io_min(tokens: Vec<Token>, errors: Vec<ParserError>) {
