@@ -48,6 +48,8 @@ pub enum TokenKind {
     Comma,
     Comment,
     Mod,
+    Lcrb,
+    Rcrb,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -89,7 +91,7 @@ impl Lexer {
                 }
             } else if ch == ' ' {
                 self.handle_space();
-            } else if [';', '.', '>', '$', ','].contains(&ch) {
+            } else if [';', '.', '>', '$', ',', '}', '{'].contains(&ch) {
                 self.handle_signs(ch);
             } else if ch == '#' {
                 self.handle_comment(ch);
@@ -120,6 +122,8 @@ impl Lexer {
             '$' => TokenKind::Port,
             '>' => TokenKind::Charge,
             ',' => TokenKind::Comma,
+            '{' => TokenKind::Lcrb,
+            '}' => TokenKind::Rcrb,
             _ => TokenKind::Block,
         };
         self.tokens
@@ -526,6 +530,22 @@ mod test {
                 token!(Semicolon, ";", 0, 5),
             ]
         );
+        assert_eq!(errors, vec![]);
+    }
+
+    #[test]
+    fn supports_lcrb() {
+        let source = "{";
+        let (tokens, errors) = lex(source);
+        assert_eq!(tokens, vec![token!(Lcrb, "{", 0, 0)]);
+        assert_eq!(errors, vec![]);
+    }
+
+    #[test]
+    fn supports_rcrb() {
+        let source = "}";
+        let (tokens, errors) = lex(source);
+        assert_eq!(tokens, vec![token!(Rcrb, "}", 0, 0)]);
         assert_eq!(errors, vec![]);
     }
 }
