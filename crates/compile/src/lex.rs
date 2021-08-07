@@ -47,6 +47,7 @@ pub enum TokenKind {
     Semicolon,
     Comma,
     Comment,
+    Mod,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -205,7 +206,10 @@ impl Lexer {
     fn is_numeric(ch: char) -> bool {
         ch >= '0' && ch <= '9'
     }
-    fn push_buffer(&mut self, kind: TokenKind) {
+    fn push_buffer(&mut self, mut kind: TokenKind) {
+        if kind == TokenKind::Identifier && &self.buffer == "mod" {
+            kind = TokenKind::Mod;
+        }
         self.tokens
             .push(Token::new(kind, self.buffer.clone(), self.current_pos()));
         self.clear_buffer();
@@ -504,6 +508,22 @@ mod test {
                 token!(Space, " ", 1, 3),
                 token!(Identifier, "b", 1, 4),
                 token!(Space, " ", 1, 5),
+            ]
+        );
+        assert_eq!(errors, vec![]);
+    }
+
+    #[test]
+    fn supports_mod_keyword() {
+        let source = "mod A;";
+        let (tokens, errors) = lex(source);
+        assert_eq!(
+            tokens,
+            vec![
+                token!(Mod, "mod", 0, 0),
+                token!(Space, " ", 0, 3),
+                token!(Identifier, "A", 0, 4),
+                token!(Semicolon, ";", 0, 5),
             ]
         );
         assert_eq!(errors, vec![]);
